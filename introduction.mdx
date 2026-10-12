@@ -1,0 +1,72 @@
+---
+title: "Oficina Mecânica API: Workshop Management REST API"
+sidebarTitle: "Introduction"
+description: "Oficina Mecânica API is a FastAPI REST service for mechanical workshop management. Covers clients, vehicles, mechanics, service orders, parts, diagnostics, and payments."
+---
+
+The **Oficina Mecânica API** is a production-ready REST service built with FastAPI and SQLAlchemy that brings structure and traceability to the day-to-day operations of an automotive workshop. From the first phone call with a client through vehicle intake, mechanic assignment, diagnostic, parts approval, and final payment, every stage of a repair job is modelled as a first-class resource with its own endpoints, validation, and lifecycle rules — giving workshop owners a reliable backend on which to build desktop, mobile, or web front-ends.
+
+## Core Entities
+
+The data model is organized around eight interconnected resources that mirror the real-world workflow of a mechanical workshop.
+
+| Entity | Description |
+|---|---|
+| **Cliente** | The workshop's customers. Stores personal and contact information and acts as the owner of one or more vehicles. |
+| **Veiculo** | A vehicle registered under a client. Captures make, model, year, license plate, mileage, fuel type (`gasolina`, `alcool`, `flex`, `hibrido`, `diesel`, `eletrico`), and current fuel level (`alto`, `medio`, `baixo`). |
+| **Mecanico** | A workshop employee qualified in one or more specialties (`mecanica_geral`, `injecao_eletronica`, `suspensao_freios`, `cambio_automatico`, `ar_condicionado`, `motor_retifica`). |
+| **OrdemServico** | The central document that ties a vehicle, a client, and a mechanic together for a single visit. Drives the full repair lifecycle from scheduling to completion or cancellation. |
+| **Diagnostico** | A structured finding attached to a service order describing the problem identified by the mechanic. |
+| **ItemServico** | A line-item for a labour operation (e.g. "oil change", "brake pad replacement") on a service order. Carries a unit price and approval status. |
+| **ItemPeca** | A line-item for a physical part consumed during a repair. Stores the part reference, quantity, and the unit price **at the time of the order**, ensuring historical price integrity. |
+| **Pagamento** | The payment record for a completed service order. Supports `dinheiro`, `pix`, `credito`, and `debito` payment methods and is immutable once created. |
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Full CRUD for All Resources" icon="database">
+    Create, read, update, and delete endpoints for clients, mechanics, vehicles, services, and parts — all validated by Pydantic v2 schemas with clear error messages.
+  </Card>
+  <Card title="Service Order Lifecycle" icon="rotate">
+    A strict status machine guides every order through `AGENDADA → EM_ORCAMENTO → EM_ANDAMENTO → CONCLUIDA` (or `CANCELADA`), preventing invalid transitions and keeping audit trails clean.
+  </Card>
+  <Card title="Item-Level Approval Workflow" icon="circle-check">
+    Individual service and parts line-items must be approved before a service order can advance to billing, giving clients granular control over what work is authorised.
+  </Card>
+  <Card title="Price History Invariance" icon="lock">
+    Part prices are captured on the `ItemPeca` record at order time. Subsequent catalogue price changes never retroactively alter existing orders, preserving accurate financial history.
+  </Card>
+  <Card title="Paginated Listings with Filters" icon="list">
+    All collection endpoints return a consistent `{ dados, paginacao }` envelope with `total_registros`, `total_paginas`, `pagina_atual`, and `tamanho_pagina` fields, making pagination trivial for any client.
+  </Card>
+  <Card title="PostgreSQL and SQLite Support" icon="server">
+    Switch between a local SQLite file for development and a production PostgreSQL cluster by changing a single environment variable — no code changes required.
+  </Card>
+</CardGroup>
+
+## Technology Stack
+
+The API is built on a modern, well-supported Python ecosystem.
+
+| Package | Version | Role |
+|---|---|---|
+| **FastAPI** | 0.142.2 | ASGI web framework, routing, dependency injection |
+| **SQLAlchemy** | 2.0.54 | Core ORM and database abstraction layer |
+| **SQLModel** | 0.0.47 | Unified SQLAlchemy + Pydantic model definitions |
+| **Alembic** | 1.20.0 | Schema migration management |
+| **Pydantic** | 2.13.5 | Request/response validation and serialization |
+| **Uvicorn** | 0.54.0 | ASGI server for running the application |
+| **psycopg2** | 2.9.13 | PostgreSQL database driver |
+| **PyYAML** | 6.0.3 | YAML configuration file parsing |
+| **python-dotenv** | 1.2.4 | `.env` file support for local development |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Clone the repo, set up your environment, run migrations, and have the server running in under five minutes.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Explore every endpoint, request schema, and response shape in the interactive reference.
+  </Card>
+</CardGroup>

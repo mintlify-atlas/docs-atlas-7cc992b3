@@ -1,0 +1,165 @@
+---
+title: "Error handling and exception types in Oficina Mecânica API"
+sidebarTitle: "Error Handling"
+description: "How the Oficina Mecânica API handles errors: custom exception classes, HTTP status codes, error response structure, and the error middleware that catches unhandled exceptions."
+---
+
+All errors produced by the Oficina Mecânica API are returned as JSON with a consistent two-field shape. A global FastAPI middleware intercepts every exception — whether it is a known business rule violation, a database constraint error, or a completely unexpected crash — and converts it into a structured response before it reaches the client. This means API consumers always receive a predictable JSON body regardless of where the error originated.
+
+## Error response shape
+
+Every error response follows the same envelope structure:
+
+```json
+{
+  "error": "RecursoNaoEncontradoException",
+  "detail": "Cliente com ID 99 não encontrado"
+}
+```
+
+- **`error`** — the name of the exception class that was raised (or `"ServerError"` for 5xx responses, where the real class name is intentionally hidden from the client).
+- **`detail`** — a human-readable description of what went wrong. For server errors this is always the generic string `"Erro interno no servidor"` to avoid leaking internal state.
+
+## Exception types
+
+All custom exceptions are defined in `app/core/exceptions.py` and inherit from the `AppError` base class. Each subclass carries a fixed `status_code` and a default `msg` that can be overridden at the raise site by passing a custom string to the constructor.
+
+| Exception class | HTTP status | Default message | When it is raised |
+|---|---|---|---|
+| `AppError` | 500 | `"Erro interno no servidor"` | Base class — not raised directly |
+| `RegraDeNegocioException` | 422 | `"Regra de negócio violada"` | Editing a status-locked service order, recording a payment for an unapproved order |
+| `RecursoNaoEncontradoException` | 404 | `"Recurso não encontrado"` | Fetching any entity by an ID that does not exist in the database |
+| `CampoDuplicadoException` | 409 | `"Dado já existe no sistema"` | Registering a client with a duplicate email, or a vehicle with a duplicate plate |
+| `ViolacaoChaveEstrangeiraException` | 409 | `"Problemas com associações entre chaves das entidades"` | Attempting to delete a record that is still referenced by dependent records |
+| `ConfigError` | 500 | `"Falha nas configurações"` | Invalid or missing YAML configuration at application startup |
+
+All exception classes accept an optional `msg` argument in their constructor. When provided, it overrides the class-level default and appears in the `detail` field of the response:
+
+```python
+raise RecursoNaoEncontradoException("Cliente com ID 99 não encontrado")
+raise CampoDuplicadoException("Já existe um cliente cadastrado com este e-mail")
+```
+
+## Error middleware
+
+The `app/core/error_middleware.py` module registers a global middleware function, `error_middleware`, that wraps every incoming request in a `try/except` block. It handles three distinct exception categories:
+
+**`AppError` subclasses (known application errors)**
+
+When an `AppError` (or any of its subclasses) is caught, the middleware inspects `status_code`:
+- If `status_code >= 500`: the exception details are logged at `ERROR` level and the response returns `"ServerError"` as the `error` field with the generic `"Erro interno no servidor"` message. The real error detail is never sent to the client.
+- If `status_code < 500`: the exception is logged at `WARNING` level and the response returns the actual exception class name and message, giving the client actionable information.
+
+**`SQLAlchemyError` (database errors)**
+
+Any `SQLAlchemyError` that was not converted to an `AppError` by service-layer code is caught here. The full stack trace is logged with `logger.exception()` and a generic HTTP 500 response is returned to the client.
+
+**Any other `Exception` (unexpected errors)**
+
+All remaining exceptions are caught as a safety net. The stack trace is logged with `logger.exception()` and the same generic HTTP 500 response is returned.
+
+```python
+async def error_middleware(request: Request, call_next):
+    local = f"{request.method} {request.url.path}"
+    try:
+        return await call_next(request)
+
+    except AppError as erro:
+        nome = type(erro).__name__
+        if erro.status_code >= 500:
+            logger.error(f"{local} - {nome}: {erro.msg}")
+            return _resposta(erro.status_code, "ServerError", MSG_GENERICA)
+        logger.warning(f"{local} - {nome}: {erro.msg}")
+        return _resposta(erro.status_code, nome, erro.msg)
+
+    except SQLAlchemyError:
+        logger.exception(f"{local} - Erro de banco de dados")
+        return _resposta(500, "ServerError", MSG_GENERICA)
+
+    except Exception:
+        logger.exception(f"{local} - Erro inesperado")
+        return _resposta(500, "ServerError", MSG_GENERICA)
+```
+
+## Logging middleware
+
+A separate middleware in `app/core/logging_middleware.py` records an access log entry for every request, regardless of whether it succeeded or failed. The log entry captures the HTTP method, request path, response status code, and is emitted at the appropriate log level:
+
+- **INFO** — for 2xx and 3xx responses (successful and redirect)
+- **WARNING** — for 4xx responses (client errors)
+- **ERROR** — for 5xx responses (server errors)
+
+```python
+async def logging_middleware(request: Request, call_next):
+    response = await call_next(request)
+    mensagem = f"{request.method} {request.url.path} status={response.status_code}"
+
+    if response.status_code >= 500:
+        logger.error(mensagem)
+    elif response.status_code >= 400:
+        logger.warning(mensagem)
+    else:
+        logger.info(mensagem)
+
+    return response
+```
+
+Log output is written to two rotating files configured via `app/core/logging_config.py`: one for the application system log (`logs/sistema`) and one for database query logs (`logs/banco`). Both paths are resolved relative to the project root using values from the application YAML configuration.
+
+## Handling errors as a client
+
+The examples below show common error scenarios you may encounter when integrating with the API.
+
+**404 — Resource not found**
+
+```bash
+curl http://localhost:8000/clientes/9999
+```
+
+```json
+{
+  "error": "RecursoNaoEncontradoException",
+  "detail": "Cliente com ID 9999 não encontrado"
+}
+```
+
+**409 — Duplicate email on client registration**
+
+```bash
+curl -X POST http://localhost:8000/clientes/ \
+  -H 'Content-Type: application/json' \
+  -d '{"nome": "João Silva", "telefone": "11999990001", "email": "carlos.silva@email.com"}'
+```
+
+```json
+{
+  "error": "CampoDuplicadoException",
+  "detail": "Já existe um cliente cadastrado com este e-mail"
+}
+```
+
+**422 — Business rule violation**
+
+```bash
+curl -X PATCH http://localhost:8000/ordens/1/status \
+  -H 'Content-Type: application/json' \
+  -d '{"status": "AGENDADA"}'
+```
+
+```json
+{
+  "error": "RegraDeNegocioException",
+  "detail": "Regra de negócio violada"
+}
+```
+
+**500 — Server error (generic, safe response)**
+
+```json
+{
+  "error": "ServerError",
+  "detail": "Erro interno no servidor"
+}
+```
+
+The real cause of any 500-level error is written to the application log file and never exposed in the HTTP response body.

@@ -1,0 +1,133 @@
+---
+title: "Pagination and filtering on list endpoints"
+sidebarTitle: "Pagination & Filters"
+description: "All Oficina Mecânica API list endpoints return paginated results. Learn the query parameters, response envelope shape, and per-resource filter fields."
+---
+
+Every `GET /` list endpoint in the Oficina Mecânica API returns results wrapped in a **pagination envelope** rather than a raw array. This design keeps response sizes predictable, prevents unbounded queries on large tables, and gives clients all the metadata they need to build navigation controls without issuing a separate count request. Pagination is handled uniformly across all resources through the shared `Paginacao` model defined in `app/models/paginacao.py`, and each resource additionally exposes its own set of optional filter parameters that narrow the result set before it is paginated.
+
+---
+
+## Pagination Parameters
+
+Two query parameters control the page and size of every list request. They are accepted by all list endpoints and have the same semantics regardless of the resource.
+
+<ParamField query="pagina" type="int" default="1">
+  The page number to return. Must be **≥ 1**. Requesting a page beyond the last available page returns an empty `dados` array with accurate totals in the `paginacao` envelope.
+</ParamField>
+
+<ParamField query="tamanho_pagina" type="int" default="10">
+  The maximum number of records to include in a single page. Accepted range is **1 – 100**. Values outside this range are rejected with HTTP 422.
+</ParamField>
+
+Results within each page are ordered by the primary searchable field of the resource (e.g., `nome` for clientes and mecânicos, `placa` for veículos). This ordering is applied server-side and is not configurable via query parameters.
+
+---
+
+## Response Envelope
+
+Every list response follows the same two-key structure. The `dados` array contains the actual records for the requested page, and the `paginacao` object contains all the metadata needed to navigate pages.
+
+```json
+{
+  "dados": [
+    {
+      "id": 1,
+      "nome": "Carlos Andrade",
+      "telefone": "11999998888",
+      "email": "carlos@example.com",
+      "created_at": "2024-03-15T10:30:00Z",
+      "updated_at": "2024-03-15T10:30:00Z"
+    }
+  ],
+  "paginacao": {
+    "total_registros": 42,
+    "total_paginas": 5,
+    "pagina_atual": 1,
+    "tamanho_pagina": 10
+  }
+}
+```
+
+### Envelope Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `dados` | `array` | The records for the current page. Empty array `[]` when the page exceeds the total or no records match the applied filters. |
+| `paginacao.total_registros` | `int` | Total number of records that match the active filters, across **all** pages. Use this to display a record count in UI components. |
+| `paginacao.total_paginas` | `int` | Total number of pages given the current `tamanho_pagina`. Calculated server-side as `ceil(total_registros / tamanho_pagina)`. Returns `0` when there are no matching records. |
+| `paginacao.pagina_atual` | `int` | The page number that was returned. Echoes back the `pagina` query parameter that was sent. |
+| `paginacao.tamanho_pagina` | `int` | The page size that was applied. Echoes back the `tamanho_pagina` query parameter that was sent. |
+
+---
+
+## Per-Resource Filters
+
+In addition to the universal pagination parameters, each list endpoint accepts its own set of optional filter query parameters. All filters are **additive** — multiple filters applied together narrow the result set further (logical AND). Omitting a filter parameter means that field is not constrained.
+
+| Resource | Filter parameter | Match type | Description |
+|---|---|---|---|
+| `GET /clientes/` | `nome` | Partial, case-insensitive | Filter clients whose name contains the given string |
+| `GET /clientes/` | `email` | Partial, case-insensitive | Filter clients whose email contains the given string |
+| `GET /mecanicos/` | `nome` | Partial, case-insensitive | Filter mechanics whose name contains the given string |
+| `GET /mecanicos/` | `especialidade` | Exact | Filter mechanics by their declared speciality (`EspecialidadeMecanico` enum value) |
+| `GET /veiculos/` | `placa` | Partial, case-insensitive | Filter vehicles whose licence plate contains the given string |
+| `GET /veiculos/` | `cliente_id` | Exact | Filter vehicles that belong to the specified client ID |
+| `GET /servicos/` | `descricao` | Partial, case-insensitive | Filter catalogue services whose description contains the given string |
+| `GET /pecas/` | `nome` | Partial, case-insensitive | Filter catalogue parts whose name contains the given string |
+
+<Note>
+  All string-based filters use a **case-insensitive partial match** implemented as a SQL `ILIKE '%value%'` clause. This means searching for `carlos` will match `Carlos Andrade`, `carlos.silva`, and any other record containing that substring, regardless of capitalisation.
+</Note>
+
+---
+
+## Examples
+
+### List clients — paginated
+
+Fetch the second page of clients, five records per page:
+
+```bash
+curl "http://localhost:8000/clientes/?pagina=2&tamanho_pagina=5"
+```
+
+### List clients — paginated with name filter
+
+Fetch the second page of clients whose name contains `Carlos`, five records per page:
+
+```bash
+curl "http://localhost:8000/clientes/?pagina=2&tamanho_pagina=5&nome=Carlos"
+```
+
+### List mechanics — filter by speciality
+
+Fetch all mechanics specialising in `suspensao_freios`:
+
+```bash
+curl "http://localhost:8000/mecanicos/?especialidade=suspensao_freios"
+```
+
+### List vehicles — filter by owner
+
+Fetch all vehicles belonging to client with ID `7`:
+
+```bash
+curl "http://localhost:8000/veiculos/?cliente_id=7"
+```
+
+### List catalogue parts — partial name search
+
+Search for parts whose name contains `filtro`:
+
+```bash
+curl "http://localhost:8000/pecas/?nome=filtro&tamanho_pagina=20"
+```
+
+---
+
+## Notes on Edge Cases
+
+- When **no records match** the applied filters, the response still returns HTTP **200** with `dados: []` and `paginacao.total_registros: 0`, `paginacao.total_paginas: 0`.
+- Requesting a `pagina` value **greater than `total_paginas`** returns HTTP **200** with an empty `dados` array. This is intentional and avoids errors in pagination controls that race with concurrent deletes.
+- The `pagina` and `tamanho_pagina` parameters are **always echoed back** in the `paginacao` envelope, so clients do not need to track what they sent to interpret the response.

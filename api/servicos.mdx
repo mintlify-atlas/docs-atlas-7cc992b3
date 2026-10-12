@@ -1,0 +1,218 @@
+---
+title: "REST API endpoints for services catalog (servicos)"
+sidebarTitle: "Services"
+description: "CRUD endpoints for the workshop services catalog. Each service has a description and base price used when building service order items."
+---
+
+The **Services** resource is a catalog of workshop services — oil changes, wheel alignments, brake inspections, electrical diagnostics, and any other billable work the shop offers. A `Servico` record captures a human-readable description and a base price. When a technician adds labor to a service order, an `ItemServico` record is created that references the service; pricing at that point is stored on the item itself, so the catalog entry can be updated without retroactively altering existing orders.
+
+---
+
+## POST /servicos/
+
+Register a new service in the catalog.
+
+**Request body — `ServicoCreate`**
+
+<ParamField body="descricao" type="string" required>
+  Human-readable name / description of the service. Must be between **3 and 250 characters**. The field is indexed to support fast partial-match searches.
+</ParamField>
+
+<ParamField body="preco" type="float" required>
+  Base price of the service in BRL. Must be **greater than 0**.
+</ParamField>
+
+**Response — `ServicoPublic` (HTTP 201)**
+
+<ResponseField name="id" type="integer">
+  Auto-generated primary key.
+</ResponseField>
+
+<ResponseField name="descricao" type="string">
+  The service description as stored.
+</ResponseField>
+
+<ResponseField name="preco" type="float">
+  The base price as stored.
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  ISO-8601 UTC timestamp of when the record was created.
+</ResponseField>
+
+<ResponseField name="updated_at" type="datetime">
+  ISO-8601 UTC timestamp of the last update.
+</ResponseField>
+
+```bash
+curl -X POST http://localhost:8000/servicos/ \
+  -H 'Content-Type: application/json' \
+  -d '{"descricao": "Troca de Óleo e Filtro de Óleo", "preco": 85.00}'
+```
+
+```json
+{
+  "id": 1,
+  "descricao": "Troca de Óleo e Filtro de Óleo",
+  "preco": 85.0,
+  "created_at": "2024-06-10T14:32:00.000Z",
+  "updated_at": "2024-06-10T14:32:00.000Z"
+}
+```
+
+---
+
+## GET /servicos/
+
+Return a paginated list of all registered services, with an optional description filter.
+
+**Query parameters**
+
+<ParamField query="pagina" type="integer" default="1">
+  Page number to retrieve. Must be **≥ 1**.
+</ParamField>
+
+<ParamField query="tamanho_pagina" type="integer" default="10">
+  Number of records per page. Accepted range: **1 – 100**.
+</ParamField>
+
+<ParamField query="descricao" type="string">
+  Optional partial-match filter applied to the `descricao` field. Case-insensitive substring search.
+</ParamField>
+
+**Response — `ServicoPage` (HTTP 200)**
+
+<ResponseField name="dados" type="ServicoPublic[]">
+  Array of service objects matching the current page and filter criteria.
+</ResponseField>
+
+<ResponseField name="paginacao.total_registros" type="integer">
+  Total number of records matching the filter.
+</ResponseField>
+
+<ResponseField name="paginacao.total_paginas" type="integer">
+  Total number of available pages given the current `tamanho_pagina`.
+</ResponseField>
+
+<ResponseField name="paginacao.pagina_atual" type="integer">
+  The page number returned in this response.
+</ResponseField>
+
+<ResponseField name="paginacao.tamanho_pagina" type="integer">
+  The page size used for this response.
+</ResponseField>
+
+```bash
+curl "http://localhost:8000/servicos/?descricao=oleo"
+```
+
+```json
+{
+  "dados": [
+    {
+      "id": 1,
+      "descricao": "Troca de Óleo e Filtro de Óleo",
+      "preco": 85.0,
+      "created_at": "2024-06-10T14:32:00.000Z",
+      "updated_at": "2024-06-10T14:32:00.000Z"
+    }
+  ],
+  "paginacao": {
+    "total_registros": 1,
+    "total_paginas": 1,
+    "pagina_atual": 1,
+    "tamanho_pagina": 10
+  }
+}
+```
+
+---
+
+## GET /servicos/\{servico_id\}
+
+Retrieve a single service by its primary key.
+
+**Path parameters**
+
+<ParamField path="servico_id" type="integer" required>
+  The unique integer ID of the service.
+</ParamField>
+
+**Response — `ServicoPublic` (HTTP 200)**
+
+Returns the full service object. See the [POST /servicos/](#post-servicos) response schema above for field descriptions.
+
+| Status | Meaning |
+|--------|---------|
+| 200 | Service found and returned. |
+| 404 | No service exists with the given `servico_id`. |
+
+```bash
+curl http://localhost:8000/servicos/1
+```
+
+---
+
+## PATCH /servicos/\{servico_id\}
+
+Partially update a service record. Only the fields included in the request body are modified; omitted fields are left unchanged.
+
+**Path parameters**
+
+<ParamField path="servico_id" type="integer" required>
+  The unique integer ID of the service to update.
+</ParamField>
+
+**Request body — `ServicoUpdate`**
+
+<ParamField body="descricao" type="string">
+  New description for the service. Must be between 3 and 250 characters if provided.
+</ParamField>
+
+<ParamField body="preco" type="float">
+  New base price. Must be **greater than 0** if provided.
+</ParamField>
+
+**Response (HTTP 201)**
+
+Returns the updated `ServicoPublic` object.
+
+<Warning>
+  Updating `preco` on a catalog service **does not retroactively change** any existing `ItemServico` records. Each `ItemServico` stores its own `valor_hora` at the time the item was added to the order. Price changes only affect new items created after the update.
+</Warning>
+
+```bash
+curl -X PATCH http://localhost:8000/servicos/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"preco": 95.00}'
+```
+
+---
+
+## DELETE /servicos/\{servico_id\}
+
+Remove a service from the catalog. The deletion is blocked if the service is referenced by any existing `ItemServico` records to preserve referential integrity.
+
+**Path parameters**
+
+<ParamField path="servico_id" type="integer" required>
+  The unique integer ID of the service to delete.
+</ParamField>
+
+**Response (HTTP 200)**
+
+```json
+{
+  "message": "Servico removido com sucesso"
+}
+```
+
+| Status | Meaning |
+|--------|---------|
+| 200 | Service deleted successfully. |
+| 404 | No service exists with the given `servico_id`. |
+| 409 | The service is referenced by one or more `ItemServico` records and cannot be removed. Disassociate or remove those items first. |
+
+```bash
+curl -X DELETE http://localhost:8000/servicos/1
+```

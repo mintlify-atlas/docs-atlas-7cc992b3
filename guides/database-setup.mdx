@@ -1,0 +1,110 @@
+---
+title: "Set up PostgreSQL or SQLite for Oficina Mecânica API"
+sidebarTitle: "Database Setup"
+description: "Configure a PostgreSQL or SQLite database for the Oficina Mecânica API by setting the DATABASE_URL environment variable and verifying the connection."
+---
+
+The Oficina Mecânica API supports two database backends: **SQLite** for local development and **PostgreSQL** for production deployments. The choice is controlled entirely by the `DATABASE_URL` environment variable — no code changes required. If the variable is not set, the API defaults to a local SQLite file, so you can run the project immediately without any database installation.
+
+## SQLite setup
+
+SQLite requires zero installation and is ideal for getting the API running locally in seconds.
+
+<Steps>
+  <Step title="No installation required">
+    SQLite is built into Python's standard library. There are no system packages to install and no server to start.
+  </Step>
+  <Step title="Configure the environment variable">
+    You can either leave `DATABASE_URL` unset (the default kicks in automatically) or set it explicitly:
+
+    ```bash
+    export DATABASE_URL="sqlite:///./oficina_mecanica.db"
+    ```
+  </Step>
+  <Step title="Start the API">
+    On first run, SQLAlchemy creates the file `oficina_mecanica.db` in the project root directory. The file persists between restarts and is the single source of truth for your local data.
+  </Step>
+</Steps>
+
+<Note>
+  SQLite is ideal for local development and testing but is not recommended for production. It does not support concurrent writes well and lacks the advanced features required by a multi-user workshop management system.
+</Note>
+
+## PostgreSQL setup
+
+PostgreSQL is the recommended engine for staging and production environments.
+
+<Steps>
+  <Step title="Install PostgreSQL">
+    Download and install PostgreSQL for your operating system by following the official PostgreSQL documentation. Ensure the `psql` CLI is accessible from your terminal before proceeding.
+  </Step>
+  <Step title="Create the database and user">
+    Connect to your PostgreSQL instance and run the following SQL commands:
+
+    ```sql
+    CREATE DATABASE oficina_db;
+    CREATE USER oficina_user WITH PASSWORD 'secret';
+    GRANT ALL PRIVILEGES ON DATABASE oficina_db TO oficina_user;
+    ```
+
+    Replace `'secret'` with a strong password in any non-development environment.
+  </Step>
+  <Step title="Set the DATABASE_URL environment variable">
+    Export the connection string so the API can find your PostgreSQL instance:
+
+    ```bash
+    export DATABASE_URL="postgresql+psycopg2://oficina_user:secret@localhost:5432/oficina_db"
+    ```
+
+    Adjust the host, port, username, password, and database name to match your setup.
+  </Step>
+  <Step title="Verify the psycopg2 driver">
+    The `psycopg2` adapter is already listed in `requirements.txt` — both `psycopg2==3.3.6` and `psycopg2-binary==3.3.6` are included. Install the project dependencies if you have not done so yet:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Use a `.env` file with `python-dotenv` (already a project dependency) to store `DATABASE_URL` without manually exporting it every session. Create `.env` in the project root and the library will load it automatically at startup.
+</Tip>
+
+## How the connection works
+
+The `app/core/database.py` module is the single place where the database connection is configured. Here is what it does:
+
+1. **Reads `DATABASE_URL`** — `os.getenv("DATABASE_URL", "sqlite:///./oficina_mecanica.db")` provides the SQLite fallback when the variable is absent.
+2. **Configures `connect_args`** — the `check_same_thread=False` flag is added only when the URL starts with `sqlite`, which is required for SQLite to work correctly with FastAPI's async request handling. PostgreSQL connections leave this dict empty.
+3. **Creates the engine** — `create_engine(DATABASE_URL, connect_args=connect_args)` builds the SQLAlchemy engine that all sessions share.
+4. **Provides `get_session()`** — this generator function is used as a FastAPI dependency via `Depends(get_session)`. It opens a `Session`, yields it to the route handler, and closes it when the request completes.
+
+```python
+import os
+from sqlmodel import Session, SQLModel, create_engine
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./oficina_mecanica.db")
+
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+```
+
+## .env file pattern
+
+Create a `.env` file in the project root with your chosen connection string. Do not commit this file to version control.
+
+```ini
+# SQLite (development)
+DATABASE_URL=sqlite:///./oficina_mecanica.db
+
+# PostgreSQL (production)
+DATABASE_URL=postgresql+psycopg2://oficina_user:secret@localhost:5432/oficina_db
+```
+
+Only one `DATABASE_URL` line should be active at a time. Comment out the one you are not using.

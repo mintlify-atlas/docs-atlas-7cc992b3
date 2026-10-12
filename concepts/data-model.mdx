@@ -1,0 +1,264 @@
+---
+title: "Oficina Mecânica API data model and entity relationships"
+sidebarTitle: "Data Model"
+description: "Complete entity map for the Oficina Mecânica API: all SQLModel tables, their fields, types, constraints, and foreign-key relationships between resources."
+---
+
+The Oficina Mecânica API is built on a relational model composed of **10 SQLModel tables**. Each table maps directly to a database entity managed by SQLAlchemy. Together they cover the full lifecycle of a mechanical workshop: registering clients and vehicles, assigning mechanics to service orders, logging diagnostics, tracking individual service and parts line-items, and recording payments. The sections below describe every field, its type, constraints, and default value, followed by a consolidated enum reference and a relationship summary.
+
+---
+
+## Entities
+
+### 1. Cliente
+
+A workshop customer. Every client can own one or more vehicles.
+
+| Field | Type | Constraints / Default | Description |
+|---|---|---|---|
+| `id` | `int` | Primary key, auto-increment | Unique identifier |
+| `nome` | `str` | min 3 · max 150 chars · indexed | Full name of the customer |
+| `telefone` | `str` | max 11 chars · not null | Phone number (digits only, up to 11) |
+| `email` | `str` | min 3 · max 120 chars · unique | Contact e-mail; must be unique across all clients |
+| `created_at` | `datetime` | Default: UTC now | Record creation timestamp |
+| `updated_at` | `datetime` | Default: UTC now · auto-updated on write | Last modification timestamp |
+
+**Relationship:** `Cliente` → `Veiculo` — one-to-many (`veiculos` back-populated on `Veiculo.cliente`).
+
+---
+
+### 2. Mecanico
+
+A workshop mechanic with a declared area of expertise.
+
+| Field | Type | Constraints / Default | Description |
+|---|---|---|---|
+| `id` | `int` | Primary key, auto-increment | Unique identifier |
+| `nome` | `str` | min 3 · max 150 chars · indexed | Full name of the mechanic |
+| `especialidade` | `EspecialidadeMecanico` | Default: `mecanica_geral` · not null | Area of specialisation (see Enums) |
+| `created_at` | `datetime` | Default: UTC now | Record creation timestamp |
+| `updated_at` | `datetime` | Default: UTC now · auto-updated on write | Last modification timestamp |
+
+**Relationship:** `Mecanico` → `OrdemServico` — one-to-many (`ordens_servico` back-populated on `OrdemServico.mecanico`).
+
+---
+
+### 3. Veiculo
+
+A vehicle owned by a client and submitted for service.
+
+| Field | Type | Constraints / Default | Description |
+|---|---|---|---|
+| `id` | `int` | Primary key, auto-increment | Unique identifier |
+| `placa` | `str` | max 7 chars · unique · indexed | Vehicle licence plate |
+| `marca` | `str` | min 3 · max 120 chars · not null | Manufacturer / make |
+| `modelo` | `str` | min 3 · max 120 chars · not null | Model name |
+| `ano` | `int` | gt 0 | Manufacturing year |
+| `combustivel` | `CombustivelVeiculo` | Default: `flex` · not null | Fuel type (see Enums) |
+| `cliente_id` | `int` | FK → `cliente.id` · not null | Owner of the vehicle |
+| `created_at` | `datetime` | Default: UTC now | Record creation timestamp |
+| `updated_at` | `datetime` | Default: UTC now · auto-updated on write | Last modification timestamp |
+
+**Relationships:** `Veiculo` → `Cliente` (many-to-one); `Veiculo` → `OrdemServico` (one-to-many).
+
+---
+
+### 4. OrdemServico
+
+A service order linking a vehicle to a mechanic. Acts as the central hub of the data model; all billing, diagnostics, and line-items hang from it.
+
+| Field | Type | Constraints / Default | Description |
+|---|---|---|---|
+| `id` | `int` | Primary key, auto-increment | Unique identifier |
+| `data_inicio` | `datetime` | Default: UTC now | When the order was opened |
+| `data_fim` | `datetime \| None` | Nullable | When the order was closed (null while in progress) |
+| `status` | `StatusOrdemServico` | Default: `agendada` · not null | Current lifecycle state (see Enums) |
+| `observacao` | `str` | max 150 chars · not null | Free-text notes from the mechanic or reception |
+| `valor_total` | `float` | ge 0 · Default: `0.0` · not null | Computed billing total (approved items only) |
+| `veiculo_id` | `int` | FK → `veiculo.id` · not null | Vehicle being serviced |
+| `mecanico_id` | `int` | FK → `mecanico.id` · not null | Responsible mechanic |
+| `created_at` | `datetime` | Default: UTC now | Record creation timestamp |
+| `updated_at` | `datetime` | Default: UTC now · auto-updated on write | Last modification timestamp |
+
+**Relationships:** belongs to `Veiculo` and `Mecanico`; one-to-one with `Diagnostico`; one-to-many with `ItemServico`, `ItemPeca`, and `Pagamento`.
+
+---
+
+### 5. Diagnostico
+
+A single diagnostic report attached to a service order. The unique constraint on `ordem_servico_id` enforces a strict one-to-one relationship.
+
+| Field | Type | Constraints / Default | Description |
+|---|---|---|---|
+| `id` | `int` | Primary key, auto-increment | Unique identifier |
+| `analise_mecanico` | `str` | min 3 · max 150 chars · not null | Mechanic's written assessment |
+| `quilometragem` | `int` | ge 0 · Default: `0` · not null | Odometer reading at intake (km) |
+| `avarias_latarias` | `str` | min 3 · max 150 chars · not null | Description of bodywork damage |
+| `nivel_combustivel` | `NivelCombustivel` | Default: `medio` · not null | Fuel level observed at intake (see Enums) |
+| `aprovado_cliente` | `bool` | Default: `True` · not null | Whether the client approved the diagnostic report |
+| `ordem_servico_id` | `int` | FK → `ordemservico.id` · **unique** · not null | Associated service order (one-to-one enforced via unique) |
+| `created_at` | `datetime` | Default: UTC now | Record creation timestamp |
+| `updated_at` | `datetime` | Default: UTC now · auto-updated on write | Last modification timestamp |
+
+---
+
+### 6. Servico
+
+A reusable service entry in the workshop catalogue (e.g., oil change, brake pad replacement).
+
+| Field | Type | Constraints / Default | Description |
+|---|---|---|---|
+| `id` | `int` | Primary key, auto-increment | Unique identifier |
+| `descricao` | `str` | min 3 · max 250 chars · indexed | Human-readable description of the service |
+| `preco` | `float` | gt 0 · not null | Catalogue price per hour |
+| `created_at` | `datetime` | Default: UTC now | Record creation timestamp |
+| `updated_at` | `datetime` | Default: UTC now · auto-updated on write | Last modification timestamp |
+
+**Relationship:** `Servico` → `ItemServico` — one-to-many.
+
+---
+
+### 7. Peca
+
+A reusable spare part entry in the workshop catalogue.
+
+| Field | Type | Constraints / Default | Description |
+|---|---|---|---|
+| `id` | `int` | Primary key, auto-increment | Unique identifier |
+| `nome` | `str` | min 3 · max 120 chars · indexed | Part name |
+| `preco` | `float` | gt 0 · not null | Catalogue unit price |
+| `created_at` | `datetime` | Default: UTC now | Record creation timestamp |
+| `updated_at` | `datetime` | Default: UTC now · auto-updated on write | Last modification timestamp |
+
+**Relationship:** `Peca` → `ItemPeca` — one-to-many.
+
+---
+
+### 8. ItemServico
+
+A junction record that attaches a catalogue service to a specific service order, capturing the hours worked and the price frozen at the time of insertion.
+
+| Field | Type | Constraints / Default | Description |
+|---|---|---|---|
+| `id` | `int` | Primary key, auto-increment | Unique identifier |
+| `tempo_hora` | `int` | gt 0 · Default: `1` | Hours of labour charged for this line-item |
+| `valor_hora` | `float` | ge 0 · Default: `0.0` | Price per hour **copied from `Servico.preco` at creation** and frozen |
+| `aprovado` | `bool` | Default: `True` · not null | Whether this line-item is included in billing |
+| `servico_id` | `int` | FK → `servico.id` · not null | Catalogue service reference |
+| `ordem_servico_id` | `int` | FK → `ordemservico.id` · not null | Owning service order |
+| `created_at` | `datetime` | Default: UTC now | Record creation timestamp |
+| `updated_at` | `datetime` | Default: UTC now · auto-updated on write | Last modification timestamp |
+
+---
+
+### 9. ItemPeca
+
+A junction record that attaches a catalogue part to a specific service order, capturing the quantity and the unit price frozen at the time of insertion.
+
+| Field | Type | Constraints / Default | Description |
+|---|---|---|---|
+| `id` | `int` | Primary key, auto-increment | Unique identifier |
+| `quantidade` | `int` | gt 0 · Default: `1` | Number of units used |
+| `preco_unitario` | `float` | ge 0 · Default: `0.0` | Unit price **copied from `Peca.preco` at creation** and frozen |
+| `aprovado` | `bool` | Default: `True` · not null | Whether this line-item is included in billing |
+| `peca_id` | `int` | FK → `peca.id` · not null | Catalogue part reference |
+| `ordem_servico_id` | `int` | FK → `ordemservico.id` · not null | Owning service order |
+| `created_at` | `datetime` | Default: UTC now | Record creation timestamp |
+| `updated_at` | `datetime` | Default: UTC now · auto-updated on write | Last modification timestamp |
+
+---
+
+### 10. Pagamento
+
+A payment transaction recorded against a service order.
+
+| Field | Type | Constraints / Default | Description |
+|---|---|---|---|
+| `id` | `int` | Primary key, auto-increment | Unique identifier |
+| `valor` | `float` | gt 0 · not null | Payment amount |
+| `forma_pagamento` | `FormaPagamento` | Default: `pix` · not null | Payment method (see Enums) |
+| `data` | `datetime` | Default: UTC now · indexed · not null | Date and time the payment was recorded |
+| `ordem_servico_id` | `int` | FK → `ordemservico.id` · not null | Service order being paid |
+| `created_at` | `datetime` | Default: UTC now | Record creation timestamp |
+| `updated_at` | `datetime` | Default: UTC now · auto-updated on write | Last modification timestamp |
+
+---
+
+## Enums
+
+All enums are defined in `app/models/enums.py` as `str` enums, so their wire values are plain strings.
+
+### `EspecialidadeMecanico`
+
+| Value | Description |
+|---|---|
+| `mecanica_geral` | General mechanics (default) |
+| `injecao_eletronica` | Electronic fuel injection systems |
+| `suspensao_freios` | Suspension and braking systems |
+| `cambio_automatico` | Automatic transmission |
+| `ar_condicionado` | Air conditioning and climate systems |
+| `motor_retifica` | Engine overhaul and machine work |
+
+### `CombustivelVeiculo`
+
+| Value | Description |
+|---|---|
+| `gasolina` | Petrol / gasoline |
+| `alcool` | Ethanol |
+| `flex` | Flex-fuel — petrol or ethanol (default) |
+| `hibrido` | Hybrid electric/combustion |
+| `diesel` | Diesel |
+| `eletrico` | Full electric |
+
+### `StatusOrdemServico`
+
+| Value | Description |
+|---|---|
+| `agendada` | Order created and scheduled (default) |
+| `em_orcamento` | Under assessment / quotation phase |
+| `em_andamento` | Actively being worked on |
+| `concluida` | Work finished — terminal state |
+| `cancelada` | Order cancelled — terminal state |
+
+### `FormaPagamento`
+
+| Value | Description |
+|---|---|
+| `dinheiro` | Cash |
+| `pix` | Pix instant transfer (default) |
+| `credito` | Credit card |
+| `debito` | Debit card |
+
+### `NivelCombustivel`
+
+| Value | Description |
+|---|---|
+| `alto` | High fuel level |
+| `medio` | Mid fuel level (default) |
+| `baixo` | Low fuel level |
+
+---
+
+## Relationship Summary
+
+The diagram below shows every foreign-key and association relationship in the data model.
+
+```
+Mecanico   ──1:N──►  OrdemServico
+Cliente    ──1:N──►  Veiculo
+Veiculo    ──1:N──►  OrdemServico
+OrdemServico ──1:1──►  Diagnostico    (unique FK on Diagnostico.ordem_servico_id)
+OrdemServico ──N:N──►  Servico        (via ItemServico junction table)
+OrdemServico ──N:N──►  Peca           (via ItemPeca junction table)
+OrdemServico ──1:N──►  Pagamento
+```
+
+| Relationship | Cardinality | Join / FK |
+|---|---|---|
+| Mecanico → OrdemServico | One-to-many | `OrdemServico.mecanico_id` |
+| Cliente → Veiculo | One-to-many | `Veiculo.cliente_id` |
+| Veiculo → OrdemServico | One-to-many | `OrdemServico.veiculo_id` |
+| OrdemServico ↔ Diagnostico | One-to-one | `Diagnostico.ordem_servico_id` (unique) |
+| OrdemServico ↔ Servico | Many-to-many | Via `ItemServico` |
+| OrdemServico ↔ Peca | Many-to-many | Via `ItemPeca` |
+| OrdemServico → Pagamento | One-to-many | `Pagamento.ordem_servico_id` |

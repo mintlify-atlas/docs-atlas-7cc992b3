@@ -1,0 +1,108 @@
+{
+  "projectType": "api-service",
+  "projectName": "Oficina Mecânica API",
+  "projectDescription": "A RESTful API built with FastAPI and SQLAlchemy for managing a mechanical workshop — handling clients, vehicles, mechanics, service orders, parts, diagnostics, and payments.",
+  "theme": "luma",
+  "primaryColor": "#E85D26",
+  "lightColor": "#FFF4EF",
+  "darkColor": "#1A0D07",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "configuration"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/data-model",
+              "concepts/business-rules",
+              "concepts/pagination-filters"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/database-setup",
+              "guides/running-migrations",
+              "guides/seed-data",
+              "guides/error-handling"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview"
+            ]
+          },
+          {
+            "group": "Resources",
+            "pages": [
+              "api/clientes",
+              "api/mecanicos",
+              "api/veiculos",
+              "api/servicos",
+              "api/pecas",
+              "api/ordens-servico",
+              "api/diagnosticos",
+              "api/itens-servico",
+              "api/itens-peca",
+              "api/pagamentos"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Full CRUD for clients, mechanics, vehicles, services, and parts",
+    "Service order lifecycle management (AGENDADA → EM_ANDAMENTO → CONCLUIDA/CANCELADA)",
+    "Technical diagnostic linked 1:1 to each service order",
+    "Item-level approval workflow for services and parts before billing",
+    "Price history invariance: applied prices are frozen at the time of item creation",
+    "Paginated listings with field-level filters on all major resources",
+    "Payment tracking per service order with multiple payment methods",
+    "Structured error handling with custom exception hierarchy",
+    "Rotating file-based structured logging via YAML configuration",
+    "Alembic database migrations supporting PostgreSQL and SQLite"
+  ],
+  "publicApiSurface": [
+    "POST /clientes/",
+    "GET /clientes/",
+    "GET /clientes/{cliente_id}",
+    "PATCH /clientes/{cliente_id}",
+    "DELETE /clientes/{cliente_id}",
+    "POST /mecanicos/",
+    "GET /mecanicos/",
+    "GET /mecanicos/{mecanico_id}",
+    "PATCH /mecanicos/{mecanico_id}",
+    "DELETE /mecanicos/{mecanico_id}",
+    "POST /veiculos/",
+    "GET /veiculos/",
+    "GET /veiculos/{veiculo_id}",
+    "PATCH /veiculos/{veiculo_id}",
+    "DELETE /veiculos/{veiculo_id}",
+    "POST /servicos/",
+    "GET /servicos/",
+    "GET /servicos/{servico_id}",
+    "PATCH /servicos/{servico_id}",
+    "DELETE /servicos/{servico_id}",
+    "POST /pecas/",
+    "GET /pecas/",
+    "GET /pecas/{peca_id}",
+    "PATCH /pecas/{peca_id}",
+    "DELETE /pecas/{peca_id}"
+  ]
+}

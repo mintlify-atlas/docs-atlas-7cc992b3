@@ -1,0 +1,149 @@
+---
+title: "Service orders (OrdemServico): schema and lifecycle"
+sidebarTitle: "Service Orders"
+description: "Schema, fields, status lifecycle, and relationships for the OrdemServico entity — the central workflow object of the Oficina Mecânica API."
+---
+
+`OrdemServico` is the central entity of the entire workshop system. Every time a vehicle arrives at the shop, a service order is opened that ties together the assigned mechanic, the vehicle being serviced, the technician's diagnostic notes, all labor performed (via `ItemServico`), all parts consumed (via `ItemPeca`), and all payments collected. The order's `status` drives the business workflow from scheduling through to completion or cancellation, and its `valor_total` is a running total that reflects only the approved work billed to the customer.
+
+<Note>
+  There is no dedicated `/ordens-servico/` route exposed in this version of the API. Service orders are created and managed indirectly through their related resources — `ItemServico`, `ItemPeca`, `DiagnosticoTecnico`, and `Pagamento`. Each of those endpoints accepts an `ordem_servico_id` that links the record to its parent order.
+</Note>
+
+---
+
+## Schema
+
+The `OrdemServico` table (`ordemservico`) carries the following fields.
+
+<ResponseField name="id" type="integer">
+  Auto-generated primary key that uniquely identifies the order within the system.
+</ResponseField>
+
+<ResponseField name="data_inicio" type="datetime">
+  ISO-8601 UTC timestamp recording when the order was opened. Defaults to the current UTC time at creation.
+</ResponseField>
+
+<ResponseField name="data_fim" type="datetime | null">
+  ISO-8601 UTC timestamp recording when the order was closed (status moved to `concluida` or `cancelada`). `null` while the order is still active.
+</ResponseField>
+
+<ResponseField name="status" type="StatusOrdemServico">
+  Current state of the order. One of `agendada`, `em_orcamento`, `em_andamento`, `concluida`, or `cancelada`. Defaults to `agendada` at creation. See the [Status Lifecycle](#status-lifecycle) section below for valid transitions.
+</ResponseField>
+
+<ResponseField name="observacao" type="string">
+  Free-text field (max 150 characters) for the mechanic's notes — initial complaint description, customer instructions, or any other relevant remarks.
+</ResponseField>
+
+<ResponseField name="valor_total" type="float">
+  Total billable amount for this order in BRL. Must be **≥ 0**. Defaults to `0.0`. This value is calculated from approved `ItemServico` and `ItemPeca` records — see the [valor_total Calculation](#valortotal-calculation) section below.
+</ResponseField>
+
+<ResponseField name="veiculo_id" type="integer">
+  Foreign key referencing the `Veiculo` (vehicle) record associated with this order. Cannot be null.
+</ResponseField>
+
+<ResponseField name="mecanico_id" type="integer">
+  Foreign key referencing the `Mecanico` (mechanic) responsible for this order. Cannot be null.
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  ISO-8601 UTC timestamp of when the record was first inserted into the database.
+</ResponseField>
+
+<ResponseField name="updated_at" type="datetime">
+  ISO-8601 UTC timestamp of the most recent update to the record. Automatically refreshed on every write.
+</ResponseField>
+
+---
+
+## Status Lifecycle
+
+The `StatusOrdemServico` enum (defined in `app/models/enums.py`) governs the state machine of every service order. The five possible values and their meanings are:
+
+| Value | Description |
+|-------|-------------|
+| `agendada` | The order has been created and is waiting for the vehicle to arrive or for work to begin. This is the default status at order creation. |
+| `em_orcamento` | The mechanic has received the vehicle and is performing diagnostics, identifying required services and parts, and preparing the repair quote for the customer. |
+| `em_andamento` | The customer approved the quote and physical work is actively in progress on the vehicle. |
+| `concluida` | All work has been completed. The order is closed and payment is expected. The `data_fim` timestamp should be set when transitioning to this state. |
+| `cancelada` | The order was cancelled before completion — either by the customer or by the shop. The `data_fim` timestamp should be set when transitioning to this state. |
+
+The typical forward progression through a healthy order is:
+
+```
+agendada → em_orcamento → em_andamento → concluida
+```
+
+A cancellation can occur from any active state:
+
+```
+agendada → cancelada
+em_orcamento → cancelada
+em_andamento → cancelada
+```
+
+<Warning>
+  Orders with status `concluida` or `cancelada` are considered closed. Adding, modifying, or removing `ItemServico`, `ItemPeca`, `DiagnosticoTecnico`, or `Pagamento` records linked to a closed order is not permitted. Attempting to do so will raise a **422 Unprocessable Entity** (business rule violation).
+</Warning>
+
+---
+
+## Relationships
+
+`OrdemServico` is the hub of the relational model. The following associations are defined on the SQLModel entity.
+
+| Cardinality | Related entity | Description |
+|-------------|---------------|-------------|
+| **1 : 1** | `DiagnosticoTecnico` | Optional technical diagnostic record created by the mechanic during the `em_orcamento` phase. Contains findings, recommended services, and parts. |
+| **1 : N** | `ItemServico` | Labor line-items linked to this order. Each record references a `Servico` from the catalog and stores the hours worked and hourly rate charged for that specific order. |
+| **1 : N** | `ItemPeca` | Parts line-items linked to this order. Each record references a `Peca` from the catalog and stores the quantity and unit price at the time of use. |
+| **1 : N** | `Pagamento` | Payment transactions recorded against this order. An order may receive multiple partial payments. |
+| **N : 1** | `Veiculo` | The vehicle being serviced. A single vehicle may have many orders over its lifetime. |
+| **N : 1** | `Mecanico` | The mechanic responsible for the order. A mechanic may handle many concurrent or historical orders. |
+
+---
+
+## valor_total Calculation
+
+The `valor_total` field accumulates the billable cost of all **approved** work on the order. Unapproved items (where `aprovado = false`) are excluded from the total — this allows the mechanic to record optional or customer-rejected work without affecting the final bill.
+
+The formula is:
+
+```
+valor_total =
+  Σ (ItemServico.tempo_hora × ItemServico.valor_hora)   -- approved service items only
+  +
+  Σ (ItemPeca.quantidade × ItemPeca.preco_unitario)     -- approved part items only
+```
+
+Where:
+
+- `ItemServico.tempo_hora` — integer number of hours the service took on this order.
+- `ItemServico.valor_hora` — hourly rate in BRL charged for that service item (snapshotted from the catalog at item creation time).
+- `ItemPeca.quantidade` — integer number of units of the part used.
+- `ItemPeca.preco_unitario` — unit price in BRL of the part (snapshotted from the catalog at item creation time).
+
+Because both `valor_hora` and `preco_unitario` are stored directly on the item records, updating the base `preco` of a `Servico` or `Peca` in the catalog has no effect on any already-created line-items or existing `valor_total` values.
+
+---
+
+## Example Object
+
+The following is a representative JSON response for a fully populated `OrdemServico` in the `em_andamento` state.
+
+```json
+{
+  "id": 42,
+  "data_inicio": "2024-06-10T08:00:00.000Z",
+  "data_fim": null,
+  "status": "em_andamento",
+  "observacao": "Cliente relata barulho ao frear e vibração no volante acima de 80 km/h.",
+  "valor_total": 347.50,
+  "veiculo_id": 7,
+  "mecanico_id": 3,
+  "created_at": "2024-06-10T08:00:00.000Z",
+  "updated_at": "2024-06-10T09:15:00.000Z"
+}
+```

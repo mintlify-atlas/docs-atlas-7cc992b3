@@ -1,0 +1,108 @@
+---
+title: "Business rules: order locking, approval, and price invariance"
+sidebarTitle: "Business Rules"
+description: "Three core business rules govern the Oficina Mecânica API: status-based order locking, item approval before billing, and immutable applied prices on service and part items."
+---
+
+The Oficina Mecânica API enforces three business rules that protect the integrity of service order data from the moment a job is scheduled through to final payment. These rules are applied in the service layer (`app/services/`) before any database write is attempted, meaning they are independent of the underlying storage engine and are consistent across all consumers of the API. Breaking any of them yields a structured error response — never a silent data corruption.
+
+---
+
+## Rule 1 — Order Status Locking
+
+A service order that has reached a **terminal status** is immutable with respect to its line-items. Specifically, any attempt to **insert, update, or delete** an `ItemServico` or `ItemPeca` that belongs to an `OrdemServico` whose `status` is `CONCLUIDA` or `CANCELADA` is rejected by the API.
+
+This prevents accidental modification of completed or cancelled jobs that may already have associated payments or have been handed back to the customer.
+
+<Warning>
+  Trying to add, change, or remove a service or parts item on an order with status `concluida` or `cancelada` returns **HTTP 422 Unprocessable Entity**. The response body will contain a `RegraDeNegocioException` message explaining which rule was violated.
+</Warning>
+
+The rule applies symmetrically to both item types:
+
+| Operation | `ItemServico` | `ItemPeca` |
+|---|---|---|
+| Create | Blocked if order is `concluida` / `cancelada` | Blocked if order is `concluida` / `cancelada` |
+| Update | Blocked if order is `concluida` / `cancelada` | Blocked if order is `concluida` / `cancelada` |
+| Delete | Blocked if order is `concluida` / `cancelada` | Blocked if order is `concluida` / `cancelada` |
+
+---
+
+## Rule 2 — Item Approval and Billing
+
+The `valor_total` field on an `OrdemServico` is **not a free-form editable field**. It is always recalculated as the sum of approved line-items only:
+
+- For **`ItemServico`**: `tempo_hora × valor_hora` where `aprovado = True`
+- For **`ItemPeca`**: `quantidade × preco_unitario` where `aprovado = True`
+
+Items with `aprovado = False` remain stored in the database and are returned in responses, but they contribute **zero** to the billing total and are excluded from payment validation. This supports the common workshop workflow where a mechanic logs all work performed and a service advisor selectively approves items before presenting the bill to the customer.
+
+<Note>
+  **Partial approvals are valid.** An order can have a mix of approved and unapproved items. Only the sum of approved items is reflected in `valor_total` and used when validating payment amounts. You can approve items incrementally without blocking the rest of the order's workflow.
+</Note>
+
+Payments (`Pagamento`) must reference an `OrdemServico` that has at least some items with `aprovado = True` — you cannot record a payment against an order with no approved work.
+
+---
+
+## Rule 3 — Price History Invariance
+
+When an `ItemServico` is created, the current `Servico.preco` value is **copied into `ItemServico.valor_hora`** and frozen there. Likewise, when an `ItemPeca` is created, `Peca.preco` is **copied into `ItemPeca.preco_unitario`** and frozen.
+
+Once stored, these applied prices are **never updated automatically** when the catalogue entry changes. A subsequent `PATCH /servicos/{id}` or `PATCH /pecas/{id}` that changes a catalogue price has no effect on any existing `ItemServico` or `ItemPeca` rows.
+
+<Tip>
+  Because every line-item permanently records the price that was in effect at the time of insertion, the API naturally supports **full billing auditability**. You can reconstruct the exact invoice for any historical order — even years later — regardless of how catalogue prices have changed since.
+</Tip>
+
+The mapping between catalogue fields and applied fields is:
+
+| Catalogue table | Catalogue price field | Applied in | Applied price field |
+|---|---|---|---|
+| `Servico` | `preco` (price per hour) | `ItemServico` | `valor_hora` |
+| `Peca` | `preco` (unit price) | `ItemPeca` | `preco_unitario` |
+
+---
+
+## Order Status Lifecycle
+
+Service orders move through a linear sequence of statuses. The two terminal states (`concluida` and `cancelada`) cannot transition to any other status once reached.
+
+```
+  AGENDADA
+     │
+     ▼
+ EM_ORCAMENTO
+     │
+     ▼
+ EM_ANDAMENTO
+     │
+     ├──────────────────────┐
+     ▼                      ▼
+ CONCLUIDA (terminal)   CANCELADA (terminal)
+```
+
+| From | To | Meaning |
+|---|---|---|
+| `agendada` | `em_orcamento` | Mechanic has started assessing the vehicle |
+| `em_orcamento` | `em_andamento` | Quote approved; active repair work begins |
+| `em_andamento` | `concluida` | All work done; order closed successfully |
+| `em_andamento` | `cancelada` | Order cancelled mid-repair |
+| `agendada` | `cancelada` | Order cancelled before any work was started |
+
+Once an order reaches `concluida` or `cancelada`, no further status transitions are permitted. Attempting one returns HTTP 422.
+
+---
+
+## Exception Types
+
+The service layer raises typed exceptions which the error middleware (`app/core/error_middleware.py`) translates into the appropriate HTTP response.
+
+| Exception class | HTTP status | When it is raised |
+|---|---|---|
+| `RegraDeNegocioException` | **422** Unprocessable Entity | A business rule is violated (e.g., modifying items on a locked order, recording a payment on an order with no approved items) |
+| `RecursoNaoEncontradoException` | **404** Not Found | The requested record (by ID) does not exist in the database |
+| `CampoDuplicadoException` | **409** Conflict | A unique-constrained field (e.g., `Cliente.email`, `Veiculo.placa`) already exists for another record |
+| `ViolacaoChaveEstrangeiraException` | **409** Conflict | A foreign-key constraint would be violated (e.g., deleting a client who still owns vehicles) |
+
+All four exceptions extend the base `AppError` class and expose a `msg` attribute that is surfaced directly in the API response body, making it straightforward for API consumers to display meaningful error messages without parsing raw database errors.

@@ -1,20 +1,68 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "Oficina Mecânica API: Workshop Management REST API"
+sidebarTitle: "Home"
+description: "A FastAPI-powered REST API for managing a full mechanical workshop — clients, vehicles, mechanics, service orders, parts, diagnostics, and payments."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+The **Oficina Mecânica API** is a RESTful service built with FastAPI, SQLAlchemy, and Alembic. It provides complete workshop management: register clients and their vehicles, assign mechanics, open and track service orders, record technical diagnostics, manage parts and service catalogs, and process payments — all through a clean HTTP API backed by PostgreSQL or SQLite.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install dependencies, configure your database, and make your first API call in minutes.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Full endpoint documentation for all resources: clients, vehicles, service orders, and more.
+  </Card>
+  <Card title="Data Model" icon="database" href="/concepts/data-model">
+    Understand the entity relationships that power the workshop management system.
+  </Card>
+  <Card title="Business Rules" icon="shield-check" href="/concepts/business-rules">
+    Learn the approval workflow, price invariance, and order status constraints.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## What the API covers
+
+The API is organized around the core entities of a mechanical workshop:
+
+<CardGroup cols={3}>
+  <Card title="Clients" icon="users" href="/api/clientes">
+    Register vehicle owners with contact details and manage their profiles.
+  </Card>
+  <Card title="Vehicles" icon="car" href="/api/veiculos">
+    Track vehicles by plate, brand, model, year, and fuel type — linked to their owner.
+  </Card>
+  <Card title="Mechanics" icon="wrench" href="/api/mecanicos">
+    Manage mechanics and their specialties (general mechanics, electronics, brakes, etc.).
+  </Card>
+  <Card title="Service Orders" icon="clipboard-list" href="/api/ordens-servico">
+    Central workflow entity: open, progress, complete, or cancel a workshop job.
+  </Card>
+  <Card title="Diagnostics" icon="stethoscope" href="/api/diagnosticos">
+    Record the initial technical inspection for each service order.
+  </Card>
+  <Card title="Payments" icon="credit-card" href="/api/pagamentos">
+    Log payments per service order via PIX, credit, debit, or cash.
+  </Card>
+</CardGroup>
+
+## Get up and running
+
+<Steps>
+  <Step title="Clone the repository and install dependencies">
+    Set up a Python virtual environment and install all required packages from `requirements.txt`.
+  </Step>
+  <Step title="Configure your database">
+    Set the `DATABASE_URL` environment variable to point at PostgreSQL or use the default SQLite database.
+  </Step>
+  <Step title="Run database migrations">
+    Apply the Alembic migration history to create all tables in your database.
+  </Step>
+  <Step title="Start the API server">
+    Launch the FastAPI app with Uvicorn and explore the interactive docs at `/docs`.
+  </Step>
+</Steps>
+
+<Note>
+  Head to the [Quickstart](/quickstart) for the full step-by-step setup with commands.
+</Note>

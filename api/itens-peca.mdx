@@ -1,0 +1,107 @@
+---
+title: "ItemPeca: parts line items on a service order"
+sidebarTitle: "Part Items"
+description: "Schema, quantity tracking, approval workflow, and price invariance rules for ItemPeca — the associative entity linking auto parts to service orders."
+---
+
+`ItemPeca` links a `Peca` from the parts catalog to a `OrdemServico`. Each record tracks how many units of a part were used (`quantidade`), the unit price that was in effect at the time the item was added (`preco_unitario`), and whether the client approved the use of that part. A single service order can contain multiple `ItemPeca` records — one for each distinct part consumed during the repair or maintenance visit.
+
+## Fields
+
+<ResponseField name="id" type="integer">
+  Auto-generated primary key. Assigned by the database on creation.
+</ResponseField>
+
+<ResponseField name="quantidade" type="integer">
+  The number of units of the part used on this service order. Must be **greater than 0**. Defaults to `1`. Multiplied by `preco_unitario` to determine this item's parts contribution to the order total.
+</ResponseField>
+
+<ResponseField name="preco_unitario" type="float">
+  The per-unit price of the part at the time this item was created, in Brazilian Reais (BRL). Must be **≥ 0**. Defaults to `0.0`. This value is **frozen at item creation** — it reflects `Peca.preco` at the moment the part was added to the order. Future changes to the parts catalog do not affect this record.
+</ResponseField>
+
+<ResponseField name="aprovado" type="boolean">
+  Whether the client approved the use of this part. Defaults to `true`. Only approved items contribute to `OrdemServico.valor_total`. Items with `aprovado = false` are excluded from billing and payment eligibility calculations.
+</ResponseField>
+
+<ResponseField name="peca_id" type="integer" required>
+  Foreign key referencing the `Peca` catalog entry that this line item is based on.
+</ResponseField>
+
+<ResponseField name="ordem_servico_id" type="integer" required>
+  Foreign key referencing the `OrdemServico` that this line item belongs to.
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  ISO 8601 timestamp of when the record was created. Set automatically by the server in UTC.
+</ResponseField>
+
+<ResponseField name="updated_at" type="datetime">
+  ISO 8601 timestamp of the last update. Refreshed automatically on every write operation in UTC.
+</ResponseField>
+
+## Price Invariance
+
+At the moment an `ItemPeca` is created, `Peca.preco` is copied into `preco_unitario`. This snapshot is immutable: any subsequent update to the part's price in the catalog has no effect on existing line items. This guarantees that invoices accurately reflect the prices that were agreed upon when the budget was presented to the client.
+
+```
+parts_contribution = quantidade × preco_unitario   (only if aprovado = true)
+```
+
+## Billing Contribution
+
+Only items with `aprovado = true` are included in the `OrdemServico.valor_total` calculation. The contribution formula for each approved `ItemPeca` is:
+
+```
+item_total = quantidade × preco_unitario
+```
+
+For example, an item with `quantidade = 4` and `preco_unitario = 48.00` contributes **R$ 192.00** to the order total. An item for the same part with `aprovado = false` contributes **R$ 0.00** regardless of quantity or price.
+
+## Locked Orders
+
+Service orders with a status of `concluida` (completed) or `cancelada` (cancelled) are immutable. Attempting to add, modify, or remove an `ItemPeca` on a locked order raises a `RegraDeNegocioException`:
+
+```json
+{
+  "status_code": 422,
+  "detail": "Regra de negócio violada"
+}
+```
+
+## Example
+
+The following record is taken from seed order #1 (routine oil change on a 2022 Chevrolet Onix). Four litres of synthetic 5W30 motor oil were used, each at R$ 48.00, approved by the client:
+
+```json
+{
+  "id": 1,
+  "quantidade": 4,
+  "preco_unitario": 48.0,
+  "aprovado": true,
+  "peca_id": 1,
+  "ordem_servico_id": 1,
+  "created_at": "2025-01-01T10:00:00Z",
+  "updated_at": "2025-01-01T10:00:00Z"
+}
+```
+
+The following record from the same order shows a non-approved item — the front brake disc pair was included in the budget for order #4 but declined by the client:
+
+```json
+{
+  "id": 7,
+  "quantidade": 1,
+  "preco_unitario": 320.0,
+  "aprovado": false,
+  "peca_id": 10,
+  "ordem_servico_id": 4,
+  "created_at": "2025-01-10T09:00:00Z",
+  "updated_at": "2025-01-10T09:00:00Z"
+}
+```
+
+## Related Resources
+
+- [Service Orders](/api/ordens-servico) — the parent entity that groups all line items for a single workshop visit
+- [Parts](/api/pecas) — the catalog of auto parts referenced by `peca_id`

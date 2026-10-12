@@ -1,47 +1,156 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get started with Oficina Mecânica API"
+sidebarTitle: "Quickstart"
+description: "Set up the Oficina Mecânica API from source in five steps: clone, virtualenv, install deps, configure the database, run migrations, seed data, and start the server."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This guide walks you through running the Oficina Mecânica API locally from source. By the end you will have a fully functional API server backed by a database, with interactive documentation available in your browser. The entire process takes fewer than five minutes on a machine that already has Python 3.11+ installed.
 
 ## Prerequisites
 
-Before you begin, you must have:
+- Python 3.11 or newer
+- `pip` and `git` available on your `PATH`
+- (Optional) PostgreSQL if you prefer a persistent relational database over the default SQLite file
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+## Setup
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Clone the repository">
+    Download the project source to your local machine and change into the project directory.
 
     ```bash
-    npm install your-package
+    git clone https://github.com/William-Bruno/oficina_mecanica.git
+    cd oficina_mecanica
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+
+  <Step title="Create and activate a virtual environment">
+    Isolating the project's dependencies in a virtual environment prevents version conflicts with other Python projects on your system.
+
+    <Tabs>
+      <Tab title="Linux / macOS">
+        ```bash
+        python3 -m venv .venv
+        source .venv/bin/activate
+        ```
+      </Tab>
+      <Tab title="Windows (PowerShell)">
+        ```powershell
+        python -m venv .venv
+        .venv\Scripts\Activate.ps1
+        ```
+      </Tab>
+      <Tab title="Windows (Command Prompt)">
+        ```cmd
+        python -m venv .venv
+        .venv\Scripts\activate.bat
+        ```
+      </Tab>
+    </Tabs>
+
+    Your shell prompt should now be prefixed with `(.venv)` to confirm the environment is active.
+  </Step>
+
+  <Step title="Install dependencies">
+    Install all required packages from the pinned `requirements.txt` manifest. This includes FastAPI, SQLModel, Alembic, Pydantic v2, Uvicorn, and the PostgreSQL driver.
 
     ```bash
-    your-cli init
+    pip install -r requirements.txt
     ```
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+  <Step title="Configure the database">
+    The API reads the `DATABASE_URL` environment variable to determine which database to connect to. If the variable is not set, it defaults to a local SQLite file named `oficina_mecanica.db` in the project root — ideal for development and quick evaluation.
+
+    <CodeGroup>
+      ```bash SQLite (default)
+      # No configuration needed — this is the default.
+      # Equivalent to setting:
+      export DATABASE_URL="sqlite:///./oficina_mecanica.db"
+      ```
+
+      ```bash PostgreSQL
+      export DATABASE_URL="postgresql+psycopg2://user:password@localhost:5432/oficina_db"
+      ```
+
+      ```powershell PostgreSQL (Windows PowerShell)
+      $env:DATABASE_URL = "postgresql+psycopg2://user:password@localhost:5432/oficina_db"
+      ```
+    </CodeGroup>
+
+    <Tip>
+      For persistent local configuration, create a `.env` file in the project root with `DATABASE_URL=...`. The `python-dotenv` package included in `requirements.txt` will pick it up automatically.
+    </Tip>
+  </Step>
+
+  <Step title="Run Alembic migrations">
+    Apply all database migrations to bring the schema up to the latest version. Alembic migration scripts are located under `app/alembic/` as configured in `alembic.ini`.
 
     ```bash
-    your-cli start
+    alembic upgrade head
     ```
+
+    You should see output similar to:
+
+    ```
+    INFO  [alembic.runtime.migration] Running upgrade  -> <revision>, initial schema
+    ```
+  </Step>
+
+  <Step title="Seed the database (optional)">
+    To populate the database with sample clients, vehicles, mechanics, and service orders for exploration, run the built-in seed script.
+
+    ```bash
+    python -m app.seed
+    ```
+
+    <Info>
+      Seeding is entirely optional. Skip this step if you prefer to start with an empty database and add records through the API.
+    </Info>
+  </Step>
+
+  <Step title="Start the server">
+    Launch the ASGI server with auto-reload enabled so that any source file change triggers an automatic restart — perfect for development.
+
+    ```bash
+    uvicorn app.main:app --reload
+    ```
+
+    You will see startup output ending with:
+
+    ```
+    INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+    INFO:     Started reloader process [...]
+    ```
+
+    The API is now live at **`http://localhost:8000`**.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Verify the Installation
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+With the server running, make a request to the clients listing endpoint. An empty workshop database returns an empty `dados` array with pagination metadata:
+
+```bash
+curl http://localhost:8000/clientes/
+```
+
+**Expected response:**
+
+```json
+{
+  "dados": [],
+  "paginacao": {
+    "total_registros": 0,
+    "total_paginas": 0,
+    "pagina_atual": 1,
+    "tamanho_pagina": 10
+  }
+}
+```
+
+If you receive this response, the API is running correctly and the database connection is healthy.
+
+<Note>
+  FastAPI generates interactive API documentation automatically. Open **`http://localhost:8000/docs`** in your browser for the Swagger UI, where you can explore every endpoint and send live requests. The alternative ReDoc interface is available at **`http://localhost:8000/redoc`**.
+</Note>

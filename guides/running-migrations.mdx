@@ -1,0 +1,105 @@
+---
+title: "Run and manage Alembic database migrations"
+sidebarTitle: "Migrations"
+description: "Apply, inspect, and roll back database schema migrations for the Oficina Mecânica API using Alembic. Covers upgrade, downgrade, and current revision commands."
+---
+
+The Oficina Mecânica API ships with a complete Alembic migration history that builds every table in the schema from scratch. Rather than relying on SQLModel's `create_all()`, all structural changes — table creation, column additions, relationship fixes, and flag additions — are tracked as discrete, versioned migration scripts. This means the database schema is fully reproducible and can be advanced or rolled back at any revision point.
+
+## Apply all migrations
+
+The most common operation is upgrading the database to the latest schema. Run this command from the project root (where `alembic.ini` lives) after configuring `DATABASE_URL`:
+
+```bash
+alembic upgrade head
+```
+
+`head` is a special alias that always points to the most recent migration revision. Alembic connects to the database, checks the current revision recorded in the `alembic_version` table, and applies every pending migration in chronological order.
+
+## Check the current revision
+
+To see which migration revision the database is currently at:
+
+```bash
+alembic current
+```
+
+The output shows the revision ID and the migration message, for example:
+
+```
+d576a854b2b8 (head)
+```
+
+If the database has never had migrations applied, this command prints nothing or reports that the `alembic_version` table does not exist.
+
+## View migration history
+
+To see all revisions in the migration chain, from oldest to newest:
+
+```bash
+alembic history --verbose
+```
+
+The `--verbose` flag includes the full migration message and timestamps for each revision, making it easier to identify the right revision ID when you need to target a specific point.
+
+## Roll back one step
+
+To undo the most recently applied migration:
+
+```bash
+alembic downgrade -1
+```
+
+This decrements the schema by exactly one revision. Run it again to step back another revision.
+
+## Roll back to a specific revision
+
+To revert the database to any specific point in history, pass the target revision ID:
+
+```bash
+alembic downgrade <revision_id>
+```
+
+For example, to roll back to the initial model:
+
+```bash
+alembic downgrade c0f547693aac
+```
+
+<Warning>
+  Dropping and recreating the database (e.g., `DROP DATABASE` in PostgreSQL or deleting the SQLite file) removes all schema history. You must run `alembic upgrade head` again before seeding the database with `python -m app.seed`. Skipping the migration step will result in missing tables and runtime errors.
+</Warning>
+
+## Migration files
+
+All migration scripts live in `app/alembic/versions/`. The chain below reflects the chronological order in which revisions were created. Each file contains both an `upgrade()` function (applied on `alembic upgrade`) and a `downgrade()` function (applied on `alembic downgrade`).
+
+| Revision | File slug | Description |
+|---|---|---|
+| `31681633a578` | `cria_tabelas_cliente_mecanico_servico_…` | Creates the initial core tables: `cliente`, `mecanico`, `servico`, `peca`, and `veiculo` |
+| `c0f547693aac` | `modelo_completo_inicial` | Expands the schema to the complete initial model with all base columns |
+| `4abf1bc8e421` | `cria_tabela_pagamento_diagnostico` | Adds the `pagamento` and `diagnostico` tables |
+| `946f9c56dc60` | `cria_tabela_associativa_item_servico` | Creates the `item_servico` associative table linking service orders to services |
+| `00657290da5a` | `cria_tabela_associativa_item_servicos` | Creates the `item_servicos` associative table (revised version) |
+| `130492e8d1cc` | `cria_tabela_associativa_item_pecass` | Creates the `item_pecas` associative table linking service orders to parts |
+| `286648a3a95e` | `corrigindo_relacionamentos_peca_item_…` | Fixes relationship definitions between `peca` and `item` tables |
+| `590ff7d8fd5b` | `corrigindo_relacionamentos_peca_item_…` | Second pass of relationship corrections for `peca`/`item` foreign keys |
+| `be66731a642d` | `ajustando_updated_at` | Adjusts `updated_at` column definitions across multiple tables |
+| `d576a854b2b8` | `adicionando_flag_de_aprovacao` | Adds the `aprovado` boolean flag used on `item_servico` and `item_peca` rows |
+
+## Alembic configuration
+
+Two files control Alembic's behavior:
+
+- **`alembic.ini`** — the project-root configuration file. It sets `script_location = app/alembic`, which tells Alembic where to find the migration scripts and the `env.py` entry point. The `sqlalchemy.url` key in this file is a placeholder; the real URL is always injected at runtime by `env.py`.
+
+- **`app/alembic/env.py`** — the environment script that runs before every Alembic command. It imports `DATABASE_URL` from `app.core.database`, overrides the `sqlalchemy.url` config option with that value, and imports `app.models` so SQLModel's metadata is populated for autogenerate support. This means `DATABASE_URL` is the single source of truth — changing the environment variable is all that is needed to point Alembic at a different database.
+
+```python
+# app/alembic/env.py (key lines)
+from app.core.database import DATABASE_URL
+import app.models
+
+config.set_main_option("sqlalchemy.url", DATABASE_URL)
+target_metadata = SQLModel.metadata
+```

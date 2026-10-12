@@ -1,0 +1,179 @@
+---
+title: "Configure the Oficina Mecânica API server"
+sidebarTitle: "Configuration"
+description: "Environment variables, database connection strings, and YAML logging configuration for the Oficina Mecânica API. Covers PostgreSQL, SQLite, and log rotation settings."
+---
+
+The Oficina Mecânica API is configured through two complementary mechanisms: a single **`DATABASE_URL` environment variable** that controls which database the application connects to, and a **`app/config/config.yaml`** file that governs application identity, log file paths, logging handlers, and per-logger verbosity levels. Together they allow you to run the same codebase against a lightweight SQLite file for local development and a hardened PostgreSQL cluster in production without touching a single line of Python.
+
+## Database URL
+
+The `DATABASE_URL` environment variable is read at startup by `app/core/database.py`. If the variable is absent, the application falls back to a local SQLite database file in the project root.
+
+<CodeGroup>
+  ```bash SQLite (default)
+  # This is the built-in default — no environment variable required.
+  export DATABASE_URL="sqlite:///./oficina_mecanica.db"
+  ```
+
+  ```bash PostgreSQL
+  export DATABASE_URL="postgresql+psycopg2://user:password@localhost:5432/oficina_db"
+  ```
+
+  ```powershell PostgreSQL (Windows PowerShell)
+  $env:DATABASE_URL = "postgresql+psycopg2://user:password@localhost:5432/oficina_db"
+  ```
+</CodeGroup>
+
+When the resolved URL begins with `sqlite`, the engine is automatically created with `connect_args={"check_same_thread": False}` to allow FastAPI's multi-threaded request handling to share the same SQLite connection safely. No additional configuration is needed for this. For PostgreSQL and other engines, `connect_args` is left empty and the driver manages connection pooling.
+
+<Tip>
+  Store the variable in a `.env` file at the project root for local development. `python-dotenv` (included in `requirements.txt`) loads it automatically before the application reads `os.getenv`.
+</Tip>
+
+## YAML Configuration File
+
+All other runtime settings live in `app/config/config.yaml`. The file is loaded once at import time by `app/core/config_loader.py` using `yaml.safe_load`. If the file is missing or malformed, the application raises a `ConfigError` and refuses to start.
+
+### Application identity (`app`)
+
+```yaml
+app:
+  name: "OFICINA MECANICA"
+```
+
+The `app.name` value is used as the **logger name** when the application-level logger is instantiated in `app/core/logging_config.py`. All log records emitted by the API are tagged with this name, making them easy to filter in aggregation tools.
+
+### Log file paths (`paths`)
+
+```yaml
+paths:
+  log_sistema_path: "logs/sistema/app.log"
+  log_banco_path: "logs/banco/sqlalchemy.log"
+```
+
+| Key | Default path | Purpose |
+|---|---|---|
+| `paths.log_sistema_path` | `logs/sistema/app.log` | Destination for the rotating application log produced by the `file_sistema` handler. |
+| `paths.log_banco_path` | `logs/banco/sqlalchemy.log` | Destination for the rotating SQLAlchemy engine log produced by the `file_banco` handler. |
+
+Both directories are relative to the working directory from which `uvicorn` is started (normally the project root). Create them in advance or ensure the process has permission to create them at startup.
+
+### Logging handlers (`logging.handlers`)
+
+Three handlers are configured.
+
+| Handler | Class | Level | Destination | Max size | Backups |
+|---|---|---|---|---|---|
+| `console` | `logging.StreamHandler` | `INFO` | `sys.stdout` | — | — |
+| `file_sistema` | `RotatingFileHandler` | `DEBUG` | `app.log` (see `log_sistema_path`) | 5 MB | 5 |
+| `file_banco` | `RotatingFileHandler` | `INFO` | `sqlalchemy.log` (see `log_banco_path`) | 5 MB | 5 |
+
+All three handlers share the `detailed` formatter:
+
+```
+%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s
+```
+
+with `datefmt` set to `%Y-%m-%d %H:%M:%S`, producing timestamps such as `2024-06-15 14:32:01.847`.
+
+### Logger levels (`logging.loggers`)
+
+| Logger | Level | Handlers | Notes |
+|---|---|---|---|
+| `OFICINA MECANICA` (app logger) | `DEBUG` | `console`, `file_sistema` | Captures every log call from application code. `propagate: false` stops records from reaching the root logger. |
+| `sqlalchemy` | `WARNING` | _(none)_ | Suppresses routine ORM noise. `propagate: false`. |
+| `sqlalchemy.engine.Engine` | `INFO` | `file_banco` | Routes SQL statement logs to the dedicated database log file without polluting the console. |
+| root | `WARNING` | `console` | Catch-all for any third-party library that logs without a specific logger configuration. |
+
+### Full configuration file
+
+<Warning>
+  Changes to `app/config/config.yaml` take effect only after restarting the server. The file is parsed once at process startup — editing it while Uvicorn is running has no effect until the next restart (or hot-reload cycle when `--reload` is active and the YAML file is included in the watch paths).
+</Warning>
+
+```yaml app/config/config.yaml
+app:
+  name: "OFICINA MECANICA"
+
+paths:
+  log_sistema_path: "logs/sistema/app.log"
+  log_banco_path: "logs/banco/sqlalchemy.log"
+
+logging:
+  version: 1
+
+  formatters:
+    detailed:
+      format: "%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s"
+      datefmt: "%Y-%m-%d %H:%M:%S"
+
+  handlers:
+    console:
+      class: logging.StreamHandler
+      level: INFO
+      formatter: detailed
+      stream: ext://sys.stdout
+
+    file_sistema:
+      class: logging.handlers.RotatingFileHandler
+      level: DEBUG
+      formatter: detailed
+      filename: app.log
+      maxBytes: 5242880
+      backupCount: 5
+      encoding: utf-8
+
+    file_banco:
+      class: logging.handlers.RotatingFileHandler
+      level: INFO
+      formatter: detailed
+      filename: sqlalchemy.log
+      maxBytes: 5242880
+      backupCount: 5
+      encoding: utf-8
+
+  loggers:
+    app:  # the real logger name comes from app.name (see logging_config.py)
+      level: DEBUG
+      handlers:
+        - console
+        - file_sistema
+      propagate: false
+
+    sqlalchemy:
+      level: WARNING
+      handlers: []
+      propagate: false
+
+    sqlalchemy.engine.Engine:
+      level: INFO
+      handlers:
+        - file_banco
+      propagate: false
+
+  root:
+    level: WARNING
+    handlers:
+      - console
+```
+
+## Application Settings
+
+The FastAPI application object is created in `app/main.py` with the following fixed metadata, which populates the OpenAPI specification and is displayed in the Swagger UI and ReDoc interfaces.
+
+```python app/main.py
+app = FastAPI(
+    title="API de Oficina Mecanica",
+    description="API de gestão de Oficina Mecanica",
+    version="1.0.0"
+)
+```
+
+| Field | Value |
+|---|---|
+| `title` | `API de Oficina Mecanica` |
+| `description` | `API de gestão de Oficina Mecanica` |
+| `version` | `1.0.0` |
+
+These values are served at `GET /openapi.json` and consumed by the auto-generated docs at `/docs` and `/redoc`. To change them, edit `app/main.py` directly and restart the server.

@@ -1,0 +1,82 @@
+---
+title: "Seed the database with sample workshop data"
+sidebarTitle: "Seed Data"
+description: "Populate the Oficina Mecânica database with realistic sample data: 10 clients, 20 vehicles, 10 mechanics, 30 parts, 30 services, 15 service orders, and more."
+---
+
+The `app/seed.py` script populates the database with a rich set of realistic sample data so you can explore the full API immediately after setup — without having to create records by hand. All data is based on a Brazilian mechanical workshop context, with real Brazilian names, license plates, auto part names, and service descriptions.
+
+## Run the seed script
+
+Make sure you have already applied all migrations before seeding. Then run the script as a Python module from the project root:
+
+```bash
+python -m app.seed
+```
+
+The script is **idempotent**. On startup it queries the `cliente` table to check whether data already exists. If at least one client record is found, it prints the following message and exits immediately without inserting any duplicates:
+
+```
+Bando de dados já alimentado.
+```
+
+On a fresh database the script prints progress markers and finishes with:
+
+```
+Semente iniciada
+Semente virou arvore com sucesso!
+```
+
+## What gets created
+
+The seed script inserts records in dependency order — clients and mechanics before vehicles, vehicles before service orders, and so on — to satisfy all foreign key constraints.
+
+| Entity | Count | Notable details |
+|---|---|---|
+| `Cliente` | 10 | Real Brazilian names with unique email addresses and phone numbers |
+| `Veiculo` | 20 | Distributed across all 10 clients; various brands, models, and model years (2018–2023) |
+| `Mecanico` | 10 | Specialists covering `mecanica_geral`, `injecao_eletronica`, `ar_condicionado`, `motor_retifica`, `suspensao_freios`, and `cambio_automatico` |
+| `Peca` | 30 | Real auto parts with unit prices — oil filters, brake pads, shock absorbers, timing belts, sensors, and more |
+| `Servico` | 30 | Real workshop services with labor prices — oil changes, alignment, brake service, electronic diagnostics, preventive reviews, and more |
+| `OrdemServico` | 15 | Mix of statuses: 8 `CONCLUIDA`, 3 `EM_ANDAMENTO`, 3 `AGENDADA`, 1 `CANCELADA` |
+| `ItemServico` | 20 | Labor line items linked to service orders, each referencing a `Servico` |
+| `ItemPeca` | 20 | Parts line items linked to service orders, each referencing a `Peca` with quantity and unit price |
+| `Diagnostico` | 10 | Technical inspections for the first 10 service orders, including mileage, body damage notes, and fuel level |
+| `Pagamento` | 10 | Payments for completed and in-progress orders using PIX, credit card, debit card, and cash |
+
+## Sample data examples
+
+The following excerpts show a representative selection of records from each main category to give you a feel for the data quality.
+
+```python
+# Sample clients (nome, telefone, email)
+("Carlos Eduardo Silva",   "85999911101", "carlos.silva@email.com")
+("Mariana Albuquerque",    "85988822202", "mariana.albuquerque@email.com")
+("Fernando Henrique Rocha","85997733303", "fernando.rocha@email.com")
+
+# Sample vehicles (placa, marca, modelo, ano, combustivel)
+("ABC1D23", "Chevrolet", "Onix 1.0 Turbo",    2022, CombustivelVeiculo.FLEX)
+("XYZ9K87", "Toyota",    "Corolla 2.0 Flex",  2021, CombustivelVeiculo.FLEX)
+("POU8Y11", "Honda",     "Civic 2.0 EXL",     2019, CombustivelVeiculo.GASOLINA)
+
+# Sample mechanics (nome, especialidade)
+("Roberto 'Beto' Santos", EspecialidadeMecanico.MECANICA_GERAL)
+("Juliana Costa",         EspecialidadeMecanico.INJECAO_ELETRONICA)
+("Andre Luis Pinheiro",   EspecialidadeMecanico.SUSPENSAO_FREIOS)
+
+# Sample services (descricao, preco)
+("Troca de Óleo e Filtro de Óleo",          85.00)
+("Diagnóstico Eletrônico via Scanner",      150.00)
+("Revisão Preventiva de 50.000 km",         650.00)
+("Alinhamento e Balanceamento 3D",          140.00)
+
+# Sample parts (nome, preco)
+("Pastilha de Freio Dianteira",   190.00)
+("Amortecedor Dianteiro",         450.00)
+("Sensor de Oxigênio (Sonda Lambda)", 290.00)
+("Kit Correia + Tensor",          280.00)
+```
+
+<Tip>
+  After seeding, visit `http://localhost:8000/docs` to explore the full API interactively with Swagger UI. All endpoints are pre-populated with real data, so you can immediately test list, detail, create, update, and delete operations without crafting your own payloads.
+</Tip>

@@ -1,0 +1,225 @@
+---
+title: "REST API endpoints for parts catalog (pecas)"
+sidebarTitle: "Parts"
+description: "CRUD endpoints for the auto parts and consumables catalog. Parts are referenced by ItemPeca records on service orders, with prices frozen at the time of item creation."
+---
+
+The **Parts** resource manages the catalog of auto parts and consumables used during workshop repairs — oil filters, brake pads, batteries, spark plugs, belts, and any other stocked item. A `Peca` record pairs a unique name with a current sale price. When a technician adds a part to a service order, an `ItemPeca` record is created that snapshots the unit price at that moment, ensuring that subsequent catalog price changes never distort historical order totals.
+
+---
+
+## POST /pecas/
+
+Register a new part in the catalog. Part names must be unique across the catalog; attempting to create a duplicate name returns HTTP 409.
+
+**Request body — `PecaCreate`**
+
+<ParamField body="nome" type="string" required>
+  Unique name identifying the part. Must be between **3 and 120 characters**. The field is indexed to support fast partial-match searches. Names are validated for uniqueness before insertion.
+</ParamField>
+
+<ParamField body="preco" type="float" required>
+  Current unit price of the part in BRL. Must be **greater than 0**.
+</ParamField>
+
+**Response — `PecaPublic` (HTTP 201)**
+
+<ResponseField name="id" type="integer">
+  Auto-generated primary key.
+</ResponseField>
+
+<ResponseField name="nome" type="string">
+  The part name as stored.
+</ResponseField>
+
+<ResponseField name="preco" type="float">
+  The current unit price as stored.
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  ISO-8601 UTC timestamp of when the record was created.
+</ResponseField>
+
+<ResponseField name="updated_at" type="datetime">
+  ISO-8601 UTC timestamp of the last update.
+</ResponseField>
+
+```bash
+curl -X POST http://localhost:8000/pecas/ \
+  -H 'Content-Type: application/json' \
+  -d '{"nome": "Filtro de Óleo Lubrificante", "preco": 38.00}'
+```
+
+```json
+{
+  "id": 1,
+  "nome": "Filtro de Óleo Lubrificante",
+  "preco": 38.0,
+  "created_at": "2024-06-10T15:00:00.000Z",
+  "updated_at": "2024-06-10T15:00:00.000Z"
+}
+```
+
+---
+
+## GET /pecas/
+
+Return a paginated list of all registered parts, with an optional name filter.
+
+**Query parameters**
+
+<ParamField query="pagina" type="integer" default="1">
+  Page number to retrieve. Must be **≥ 1**.
+</ParamField>
+
+<ParamField query="tamanho_pagina" type="integer" default="10">
+  Number of records per page. Accepted range: **1 – 100**.
+</ParamField>
+
+<ParamField query="nome" type="string">
+  Optional partial-match filter applied to the `nome` field. Case-insensitive substring search.
+</ParamField>
+
+**Response — `PecaPage` (HTTP 200)**
+
+<ResponseField name="dados" type="PecaPublic[]">
+  Array of part objects matching the current page and filter criteria.
+</ResponseField>
+
+<ResponseField name="paginacao.total_registros" type="integer">
+  Total number of records matching the filter.
+</ResponseField>
+
+<ResponseField name="paginacao.total_paginas" type="integer">
+  Total number of available pages given the current `tamanho_pagina`.
+</ResponseField>
+
+<ResponseField name="paginacao.pagina_atual" type="integer">
+  The page number returned in this response.
+</ResponseField>
+
+<ResponseField name="paginacao.tamanho_pagina" type="integer">
+  The page size used for this response.
+</ResponseField>
+
+```bash
+curl "http://localhost:8000/pecas/?nome=filtro"
+```
+
+```json
+{
+  "dados": [
+    {
+      "id": 1,
+      "nome": "Filtro de Óleo Lubrificante",
+      "preco": 38.0,
+      "created_at": "2024-06-10T15:00:00.000Z",
+      "updated_at": "2024-06-10T15:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "nome": "Filtro de Ar do Motor",
+      "preco": 42.50,
+      "created_at": "2024-06-10T15:05:00.000Z",
+      "updated_at": "2024-06-10T15:05:00.000Z"
+    }
+  ],
+  "paginacao": {
+    "total_registros": 2,
+    "total_paginas": 1,
+    "pagina_atual": 1,
+    "tamanho_pagina": 10
+  }
+}
+```
+
+---
+
+## GET /pecas/\{peca_id\}
+
+Retrieve a single part by its primary key.
+
+**Path parameters**
+
+<ParamField path="peca_id" type="integer" required>
+  The unique integer ID of the part.
+</ParamField>
+
+**Response — `PecaPublic` (HTTP 200)**
+
+Returns the full part object. See the [POST /pecas/](#post-pecas) response schema above for field descriptions.
+
+| Status | Meaning |
+|--------|---------|
+| 200 | Part found and returned. |
+| 404 | No part exists with the given `peca_id`. |
+
+```bash
+curl http://localhost:8000/pecas/1
+```
+
+---
+
+## PATCH /pecas/\{peca_id\}
+
+Partially update a part record. Only the fields included in the request body are modified; omitted fields are left unchanged. If `nome` is provided, it is validated for uniqueness before the update is applied.
+
+**Path parameters**
+
+<ParamField path="peca_id" type="integer" required>
+  The unique integer ID of the part to update.
+</ParamField>
+
+**Request body — `PecaUpdate`**
+
+<ParamField body="nome" type="string">
+  New name for the part. Must be between 3 and 120 characters if provided. Must be unique across the catalog; a 409 is returned if the name is already taken by another record.
+</ParamField>
+
+<ParamField body="preco" type="float">
+  New unit price. Must be **greater than 0** if provided.
+</ParamField>
+
+**Response (HTTP 201)**
+
+Returns the updated `PecaPublic` object.
+
+<Warning>
+  Updating `preco` on a catalog part **does not retroactively change** any existing `ItemPeca` records. Each `ItemPeca` stores its own `preco_unitario` at the time the item was added to the order. Price changes only affect new items created after the update.
+</Warning>
+
+```bash
+curl -X PATCH http://localhost:8000/pecas/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"preco": 41.50}'
+```
+
+---
+
+## DELETE /pecas/\{peca_id\}
+
+Remove a part from the catalog. The deletion is blocked if the part is referenced by any existing `ItemPeca` records to preserve referential integrity.
+
+**Path parameters**
+
+<ParamField path="peca_id" type="integer" required>
+  The unique integer ID of the part to delete.
+</ParamField>
+
+**Response (HTTP 200)**
+
+```json
+{
+  "message": "Peca removido com sucesso"
+}
+```
+
+| Status | Meaning |
+|--------|---------|
+| 200 | Part deleted successfully. |
+| 404 | No part exists with the given `peca_id`. |
+| 409 | The part is referenced by one or more `ItemPeca` records and cannot be removed. Remove those line-items from their service orders first. |
+
+```bash
+curl -X DELETE http://localhost:8000/pecas/1
+```

@@ -1,0 +1,424 @@
+---
+title: "REST API endpoints for vehicles (veiculos)"
+sidebarTitle: "Vehicles"
+description: "CRUD endpoints for client vehicles. Vehicles must be linked to an existing client. Supports filtering by license plate and client ID."
+---
+
+The **Vehicles** resource (`/veiculos`) represents the cars, trucks, and other vehicles registered at the workshop. Every vehicle must be associated with an existing client through the `cliente_id` foreign key — the service validates the client's existence before creating or reassigning a vehicle. License plates (`placa`) are unique across the system, so attempting to register a duplicate plate returns a `409 Conflict`. Vehicles also carry a fuel type classification via the `CombustivelVeiculo` enum. Fetching a single vehicle by ID (`GET /veiculos/{id}`) is the only endpoint that returns the full nested client object embedded in the response.
+
+<Note>
+  The list endpoint (`GET /veiculos/`) uses the abbreviated query parameter names `p` (page) and `tp` (page size) instead of the `pagina` / `tamanho_pagina` names used by the Clients and Mechanics endpoints.
+</Note>
+
+---
+
+## POST /veiculos/
+
+Register a new vehicle and link it to an existing client.
+
+### Request body (`VeiculoCreate`)
+
+<ParamField body="placa" type="string" required>
+  Vehicle license plate. Maximum 7 characters. **Must be unique** across all vehicles.
+</ParamField>
+
+<ParamField body="marca" type="string" required>
+  Vehicle make (manufacturer). Must be between 3 and 120 characters.
+</ParamField>
+
+<ParamField body="modelo" type="string" required>
+  Vehicle model name. Must be between 3 and 120 characters.
+</ParamField>
+
+<ParamField body="ano" type="integer" required>
+  Model year of the vehicle. Must be greater than 0.
+</ParamField>
+
+<ParamField body="combustivel" type="string (CombustivelVeiculo enum)" required>
+  Fuel type of the vehicle. Defaults to `flex` if omitted.
+
+  Accepted values:
+
+  | Value | Description |
+  |-------|-------------|
+  | `gasolina` | Gasoline |
+  | `alcool` | Ethanol |
+  | `flex` | Flex fuel — gasoline or ethanol (default) |
+  | `hibrido` | Hybrid |
+  | `diesel` | Diesel |
+  | `eletrico` | Electric |
+</ParamField>
+
+<ParamField body="cliente_id" type="integer" required>
+  The ID of the client who owns this vehicle. Must reference an existing client.
+</ParamField>
+
+### Response `201 Created`
+
+Returns the newly created vehicle as a `VeiculoPublic` object.
+
+<ResponseField name="id" type="integer">
+  Auto-generated primary key.
+</ResponseField>
+
+<ResponseField name="placa" type="string">
+  License plate of the vehicle.
+</ResponseField>
+
+<ResponseField name="marca" type="string">
+  Vehicle make.
+</ResponseField>
+
+<ResponseField name="modelo" type="string">
+  Vehicle model.
+</ResponseField>
+
+<ResponseField name="ano" type="integer">
+  Model year.
+</ResponseField>
+
+<ResponseField name="combustivel" type="string">
+  Fuel type enum value.
+</ResponseField>
+
+<ResponseField name="cliente_id" type="integer">
+  ID of the owning client.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  ISO 8601 UTC timestamp of when the record was created.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  ISO 8601 UTC timestamp of the last update.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST http://localhost:8000/veiculos/ \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "placa": "ABC1D23",
+    "marca": "Volkswagen",
+    "modelo": "Gol",
+    "ano": 2019,
+    "combustivel": "flex",
+    "cliente_id": 1
+  }'
+```
+
+```json
+{
+  "id": 1,
+  "placa": "ABC1D23",
+  "marca": "Volkswagen",
+  "modelo": "Gol",
+  "ano": 2019,
+  "combustivel": "flex",
+  "cliente_id": 1,
+  "created_at": "2024-06-10T14:30:00.000000Z",
+  "updated_at": "2024-06-10T14:30:00.000000Z"
+}
+```
+
+### Errors
+
+| Status | Class | Condition |
+|--------|-------|-----------|
+| `404` | `RecursoNaoEncontradoException` | No client with the given `cliente_id` exists. |
+| `409` | `CampoDuplicadoException` | A vehicle with the given `placa` is already registered. |
+| `409` | `ViolacaoChaveEstrangeiraException` | Database integrity error during creation. |
+
+---
+
+## GET /veiculos/
+
+List all vehicles with optional pagination and filtering by license plate or client ID.
+
+### Query parameters
+
+<ParamField query="p" type="integer" default="1">
+  Page number to retrieve. Must be ≥ 1.
+</ParamField>
+
+<ParamField query="tp" type="integer" default="10">
+  Number of records per page. Must be between 1 and 100.
+</ParamField>
+
+<ParamField query="placa" type="string">
+  Optional. Case-insensitive partial match against the vehicle's `placa` field.
+</ParamField>
+
+<ParamField query="cliente_id" type="integer">
+  Optional. Exact match filter — returns only vehicles belonging to the client with this ID.
+</ParamField>
+
+### Response `200 OK`
+
+Returns a `VeiculoPage` envelope.
+
+<ResponseField name="dados" type="array">
+  List of `VeiculoPublic` objects matching the query.
+</ResponseField>
+
+<ResponseField name="paginacao" type="object">
+  Pagination metadata.
+
+  <Expandable title="paginacao fields">
+    <ResponseField name="total_registros" type="integer">
+      Total number of vehicles matching the current filter.
+    </ResponseField>
+    <ResponseField name="total_paginas" type="integer">
+      Total number of pages given the current `tp`.
+    </ResponseField>
+    <ResponseField name="pagina_atual" type="integer">
+      The page number returned in this response.
+    </ResponseField>
+    <ResponseField name="tamanho_pagina" type="integer">
+      The page size used for this response.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl "http://localhost:8000/veiculos/?p=1&tp=10&cliente_id=1"
+```
+
+```json
+{
+  "dados": [
+    {
+      "id": 1,
+      "placa": "ABC1D23",
+      "marca": "Volkswagen",
+      "modelo": "Gol",
+      "ano": 2019,
+      "combustivel": "flex",
+      "cliente_id": 1,
+      "created_at": "2024-06-10T14:30:00.000000Z",
+      "updated_at": "2024-06-10T14:30:00.000000Z"
+    }
+  ],
+  "paginacao": {
+    "total_registros": 1,
+    "total_paginas": 1,
+    "pagina_atual": 1,
+    "tamanho_pagina": 10
+  }
+}
+```
+
+---
+
+## GET /veiculos/\{veiculo_id\}
+
+Fetch a single vehicle by its numeric ID. This is the **only vehicle endpoint** that returns the full nested client object (`VeiculoClientePublic`) embedded in the response body.
+
+### Path parameters
+
+<ParamField path="veiculo_id" type="integer" required>
+  The unique integer ID of the vehicle to retrieve.
+</ParamField>
+
+### Response `200 OK`
+
+Returns a `VeiculoClientePublic` object — all `VeiculoPublic` fields plus an embedded `cliente` object.
+
+<ResponseField name="id" type="integer">
+  Vehicle primary key.
+</ResponseField>
+
+<ResponseField name="placa" type="string">
+  License plate.
+</ResponseField>
+
+<ResponseField name="marca" type="string">
+  Vehicle make.
+</ResponseField>
+
+<ResponseField name="modelo" type="string">
+  Vehicle model.
+</ResponseField>
+
+<ResponseField name="ano" type="integer">
+  Model year.
+</ResponseField>
+
+<ResponseField name="combustivel" type="string">
+  Fuel type enum value.
+</ResponseField>
+
+<ResponseField name="cliente_id" type="integer">
+  ID of the owning client.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  ISO 8601 UTC timestamp of record creation.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  ISO 8601 UTC timestamp of the last update.
+</ResponseField>
+
+<ResponseField name="cliente" type="object | null">
+  The full `ClientePublic` object for the vehicle's owner, embedded directly in the response.
+
+  <Expandable title="cliente fields">
+    <ResponseField name="id" type="integer">
+      Client primary key.
+    </ResponseField>
+    <ResponseField name="nome" type="string">
+      Client name.
+    </ResponseField>
+    <ResponseField name="telefone" type="string">
+      Client phone number.
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      Client email address.
+    </ResponseField>
+    <ResponseField name="created_at" type="string (datetime)">
+      ISO 8601 UTC timestamp of client record creation.
+    </ResponseField>
+    <ResponseField name="updated_at" type="string (datetime)">
+      ISO 8601 UTC timestamp of the last client update.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl http://localhost:8000/veiculos/1
+```
+
+```json
+{
+  "id": 1,
+  "placa": "ABC1D23",
+  "marca": "Volkswagen",
+  "modelo": "Gol",
+  "ano": 2019,
+  "combustivel": "flex",
+  "cliente_id": 1,
+  "created_at": "2024-06-10T14:30:00.000000Z",
+  "updated_at": "2024-06-10T14:30:00.000000Z",
+  "cliente": {
+    "id": 1,
+    "nome": "Carlos Eduardo Silva",
+    "telefone": "85999911101",
+    "email": "carlos.silva@email.com",
+    "created_at": "2024-06-10T14:22:05.123456Z",
+    "updated_at": "2024-06-10T14:22:05.123456Z"
+  }
+}
+```
+
+### Errors
+
+| Status | Class | Condition |
+|--------|-------|-----------|
+| `404` | `RecursoNaoEncontradoException` | No vehicle with the given `veiculo_id` exists. |
+
+---
+
+## PATCH /veiculos/\{veiculo_id\}
+
+Partially update one or more fields of an existing vehicle. If `cliente_id` is changed, the new client must exist. If `placa` is changed, it must not conflict with any other registered vehicle.
+
+### Path parameters
+
+<ParamField path="veiculo_id" type="integer" required>
+  The unique integer ID of the vehicle to update.
+</ParamField>
+
+### Request body (`VeiculoUpdate` — all fields optional)
+
+<ParamField body="placa" type="string">
+  New license plate. Maximum 7 characters. Must be unique if changed.
+</ParamField>
+
+<ParamField body="marca" type="string">
+  New vehicle make. Must be between 3 and 120 characters if provided.
+</ParamField>
+
+<ParamField body="modelo" type="string">
+  New vehicle model. Must be between 3 and 120 characters if provided.
+</ParamField>
+
+<ParamField body="ano" type="integer">
+  New model year. Must be greater than 0 if provided.
+</ParamField>
+
+<ParamField body="combustivel" type="string (CombustivelVeiculo enum)">
+  New fuel type. Must be one of the accepted `CombustivelVeiculo` enum values if provided.
+</ParamField>
+
+<ParamField body="cliente_id" type="integer">
+  New owner client ID. Must reference an existing client if provided.
+</ParamField>
+
+### Response `201 Created`
+
+Returns the updated `VeiculoPublic` object.
+
+```bash
+curl -X PATCH http://localhost:8000/veiculos/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"ano": 2020, "combustivel": "gasolina"}'
+```
+
+```json
+{
+  "id": 1,
+  "placa": "ABC1D23",
+  "marca": "Volkswagen",
+  "modelo": "Gol",
+  "ano": 2020,
+  "combustivel": "gasolina",
+  "cliente_id": 1,
+  "created_at": "2024-06-10T14:30:00.000000Z",
+  "updated_at": "2024-06-10T17:05:00.000000Z"
+}
+```
+
+### Errors
+
+| Status | Class | Condition |
+|--------|-------|-----------|
+| `404` | `RecursoNaoEncontradoException` | No vehicle with the given `veiculo_id` exists, or the new `cliente_id` does not reference an existing client. |
+| `409` | `CampoDuplicadoException` | The new `placa` is already registered to another vehicle. |
+| `409` | `ViolacaoChaveEstrangeiraException` | Database integrity error during the update. |
+
+---
+
+## DELETE /veiculos/\{veiculo_id\}
+
+Permanently remove a vehicle from the system. This operation is blocked if the vehicle has any service orders associated with it.
+
+### Path parameters
+
+<ParamField path="veiculo_id" type="integer" required>
+  The unique integer ID of the vehicle to delete.
+</ParamField>
+
+### Response `200 OK`
+
+```bash
+curl -X DELETE http://localhost:8000/veiculos/1
+```
+
+```json
+{
+  "message": "Veículo removido com sucesso!"
+}
+```
+
+### Errors
+
+| Status | Class | Condition |
+|--------|-------|-----------|
+| `404` | `RecursoNaoEncontradoException` | No vehicle with the given `veiculo_id` exists. |
+| `409` | `ViolacaoChaveEstrangeiraException` | Vehicle has associated service orders and cannot be removed. |

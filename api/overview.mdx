@@ -1,0 +1,99 @@
+---
+title: "Oficina Mecânica API — REST endpoint overview"
+sidebarTitle: "Overview"
+description: "Base URL, response format, common HTTP status codes, and interactive documentation links for the Oficina Mecânica REST API."
+---
+
+The Oficina Mecânica REST API provides a complete set of CRUD endpoints for managing the day-to-day operations of a mechanical workshop. Built with FastAPI and SQLAlchemy, the API covers core resources such as clients, mechanics, vehicles, services, parts, service orders, diagnostics, and payments — all served over JSON with consistent pagination envelopes and structured error responses.
+
+## Base URL
+
+All endpoints are relative to the development base URL:
+
+```
+http://localhost:8000
+```
+
+There is no path prefix — resource routes are mounted directly at the root (e.g. `http://localhost:8000/clientes/`).
+
+## Interactive Documentation
+
+FastAPI auto-generates two interactive documentation UIs from the OpenAPI schema:
+
+| Interface | URL |
+|-----------|-----|
+| Swagger UI | [`http://localhost:8000/docs`](http://localhost:8000/docs) |
+| ReDoc | [`http://localhost:8000/redoc`](http://localhost:8000/redoc) |
+
+Both interfaces let you inspect request/response schemas and execute live requests without any additional tooling.
+
+## Content Type
+
+All requests and responses use `application/json`. Include the `Content-Type: application/json` header on every request that sends a body.
+
+## HTTP Status Codes
+
+| Code | Meaning | When it is returned |
+|------|---------|---------------------|
+| `200` | OK | Successful `GET` or `DELETE` |
+| `201` | Created | Successful `POST` or `PATCH` |
+| `404` | Not Found | The requested resource ID does not exist |
+| `409` | Conflict | Duplicate unique field (e.g. email, license plate) or a foreign-key constraint violation |
+| `422` | Unprocessable Entity | Business rule violation or Pydantic validation error |
+| `500` | Internal Server Error | Unhandled server-side error |
+
+## Error Response Format
+
+When the API returns a `4xx` or `5xx` status code, the response body follows this structure:
+
+```json
+{
+  "error": "ExceptionClassName",
+  "detail": "Human-readable message describing what went wrong"
+}
+```
+
+**Exception class names used by the API:**
+
+| Class | Status | Typical cause |
+|-------|--------|---------------|
+| `RecursoNaoEncontradoException` | 404 | Resource ID does not exist |
+| `CampoDuplicadoException` | 409 | Unique constraint violated (email, license plate) |
+| `ViolacaoChaveEstrangeiraException` | 409 | FK violation — delete blocked by dependent records, or referenced entity missing |
+| `RegraDeNegocioException` | 422 | Business rule violated |
+| `AppError` | 500 | Unhandled internal error |
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Clients" icon="user" href="/api/clientes">
+    Manage workshop clients. Create, list with filters, update, and delete client records linked to vehicles and service orders.
+  </Card>
+  <Card title="Mechanics" icon="wrench" href="/api/mecanicos">
+    Manage mechanics and their specialties. Each mechanic is assigned one of six specialty enum values.
+  </Card>
+  <Card title="Vehicles" icon="car" href="/api/veiculos">
+    Register vehicles belonging to clients. Supports filtering by license plate and client ID.
+  </Card>
+  <Card title="Services" icon="screwdriver-wrench" href="/api/servicos">
+    Define the catalog of services offered by the workshop, used as line items within service orders.
+  </Card>
+  <Card title="Parts" icon="gear" href="/api/pecas">
+    Manage the parts inventory. Parts are referenced in service order part items.
+  </Card>
+  <Card title="Service Orders" icon="clipboard-list" href="/api/ordens-servico">
+    Core workflow entity. Links a vehicle and mechanic, tracks status through its lifecycle, and contains service and part items.
+  </Card>
+  <Card title="Diagnostics" icon="stethoscope" href="/api/diagnosticos">
+    Attach diagnostic reports to service orders, recording the identified problem and recommended action.
+  </Card>
+  <Card title="Service Items" icon="list-check" href="/api/itens-servico">
+    Line items that associate a specific service with a service order, including quantity and price.
+  </Card>
+  <Card title="Part Items" icon="box" href="/api/itens-peca">
+    Line items that associate a specific part with a service order, including quantity and unit price.
+  </Card>
+  <Card title="Payments" icon="credit-card" href="/api/pagamentos">
+    Record payments for service orders. Supports multiple payment methods including PIX, credit, debit, and cash.
+  </Card>
+</CardGroup>

@@ -1,0 +1,275 @@
+---
+title: "REST API endpoints for mechanics (mecanicos)"
+sidebarTitle: "Mechanics"
+description: "CRUD endpoints for workshop mechanics. Supports filtering by name and specialty. Each mechanic has a defined specialty enum value."
+---
+
+The **Mechanics** resource (`/mecanicos`) represents the technicians employed by the workshop. Every mechanic record holds a name and a specialty drawn from the `EspecialidadeMecanico` enum, which categorizes the type of work the mechanic is qualified to perform. Mechanics are assigned to service orders; deleting a mechanic who still has service orders linked to them will return a `409 Conflict`.
+
+---
+
+## POST /mecanicos/
+
+Register a new mechanic in the workshop system.
+
+### Request body (`MecanicoCreate`)
+
+<ParamField body="nome" type="string" required>
+  Full name of the mechanic. Must be between 3 and 150 characters.
+</ParamField>
+
+<ParamField body="especialidade" type="string (EspecialidadeMecanico enum)">
+  The mechanic's area of expertise. Defaults to `mecanica_geral` if omitted.
+
+  Accepted values:
+
+  | Value | Description |
+  |-------|-------------|
+  | `mecanica_geral` | General mechanics (default) |
+  | `injecao_eletronica` | Electronic fuel injection |
+  | `suspensao_freios` | Suspension and brakes |
+  | `cambio_automatico` | Automatic transmission |
+  | `ar_condicionado` | Air conditioning |
+  | `motor_retifica` | Engine rebuilding |
+</ParamField>
+
+### Response `201 Created`
+
+Returns the newly created mechanic as a `MecanicoPublic` object.
+
+<ResponseField name="id" type="integer">
+  Auto-generated primary key.
+</ResponseField>
+
+<ResponseField name="nome" type="string">
+  Mechanic name.
+</ResponseField>
+
+<ResponseField name="especialidade" type="string">
+  The mechanic's specialty enum value.
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  ISO 8601 UTC timestamp of when the record was created.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  ISO 8601 UTC timestamp of the last update.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST http://localhost:8000/mecanicos/ \
+  -H 'Content-Type: application/json' \
+  -d '{"nome": "Roberto Alves Pereira", "especialidade": "suspensao_freios"}'
+```
+
+```json
+{
+  "id": 1,
+  "nome": "Roberto Alves Pereira",
+  "especialidade": "suspensao_freios",
+  "created_at": "2024-06-10T09:15:30.000000Z",
+  "updated_at": "2024-06-10T09:15:30.000000Z"
+}
+```
+
+### Errors
+
+| Status | Class | Condition |
+|--------|-------|-----------|
+| `409` | `ViolacaoChaveEstrangeiraException` | Integrity error during creation (e.g. invalid enum value passed outside of FastAPI validation). |
+
+---
+
+## GET /mecanicos/
+
+List all mechanics with optional pagination and filtering by name or specialty.
+
+### Query parameters
+
+<ParamField query="pagina" type="integer" default="1">
+  Page number to retrieve. Must be ≥ 1.
+</ParamField>
+
+<ParamField query="tamanho_pagina" type="integer" default="10">
+  Number of records per page. Must be between 1 and 100.
+</ParamField>
+
+<ParamField query="nome" type="string">
+  Optional. Case-insensitive partial match against the mechanic's `nome` field.
+</ParamField>
+
+<ParamField query="especialidade" type="string">
+  Optional. Case-insensitive partial match against the mechanic's `especialidade` field. For example, passing `suspensao` will match `suspensao_freios`.
+</ParamField>
+
+### Response `200 OK`
+
+Returns a `MecanicoPage` envelope.
+
+<ResponseField name="dados" type="array">
+  List of `MecanicoPublic` objects matching the query.
+</ResponseField>
+
+<ResponseField name="paginacao" type="object">
+  Pagination metadata.
+
+  <Expandable title="paginacao fields">
+    <ResponseField name="total_registros" type="integer">
+      Total number of mechanics matching the current filter.
+    </ResponseField>
+    <ResponseField name="total_paginas" type="integer">
+      Total number of pages given the current `tamanho_pagina`.
+    </ResponseField>
+    <ResponseField name="pagina_atual" type="integer">
+      The page number returned in this response.
+    </ResponseField>
+    <ResponseField name="tamanho_pagina" type="integer">
+      The page size used for this response.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl "http://localhost:8000/mecanicos/?pagina=1&tamanho_pagina=10&especialidade=cambio"
+```
+
+```json
+{
+  "dados": [
+    {
+      "id": 3,
+      "nome": "Fernanda Costa Ramos",
+      "especialidade": "cambio_automatico",
+      "created_at": "2024-06-08T11:00:00.000000Z",
+      "updated_at": "2024-06-08T11:00:00.000000Z"
+    }
+  ],
+  "paginacao": {
+    "total_registros": 1,
+    "total_paginas": 1,
+    "pagina_atual": 1,
+    "tamanho_pagina": 10
+  }
+}
+```
+
+---
+
+## GET /mecanicos/\{mecanico_id\}
+
+Fetch a single mechanic by their numeric ID.
+
+### Path parameters
+
+<ParamField path="mecanico_id" type="integer" required>
+  The unique integer ID of the mechanic to retrieve.
+</ParamField>
+
+### Response `200 OK`
+
+Returns a `MecanicoPublic` object.
+
+```bash
+curl http://localhost:8000/mecanicos/1
+```
+
+```json
+{
+  "id": 1,
+  "nome": "Roberto Alves Pereira",
+  "especialidade": "suspensao_freios",
+  "created_at": "2024-06-10T09:15:30.000000Z",
+  "updated_at": "2024-06-10T09:15:30.000000Z"
+}
+```
+
+### Errors
+
+| Status | Class | Condition |
+|--------|-------|-----------|
+| `404` | `RecursoNaoEncontradoException` | No mechanic with the given `mecanico_id` exists. |
+
+---
+
+## PATCH /mecanicos/\{mecanico_id\}
+
+Partially update one or more fields of an existing mechanic. Only the fields provided in the request body are changed.
+
+### Path parameters
+
+<ParamField path="mecanico_id" type="integer" required>
+  The unique integer ID of the mechanic to update.
+</ParamField>
+
+### Request body (`MecanicoUpdate` — all fields optional)
+
+<ParamField body="nome" type="string">
+  New mechanic name. Must be between 3 and 150 characters if provided.
+</ParamField>
+
+<ParamField body="especialidade" type="string (EspecialidadeMecanico enum)">
+  New specialty. Must be one of the accepted `EspecialidadeMecanico` enum values if provided.
+</ParamField>
+
+### Response `201 Created`
+
+Returns the updated `MecanicoPublic` object.
+
+```bash
+curl -X PATCH http://localhost:8000/mecanicos/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"especialidade": "motor_retifica"}'
+```
+
+```json
+{
+  "id": 1,
+  "nome": "Roberto Alves Pereira",
+  "especialidade": "motor_retifica",
+  "created_at": "2024-06-10T09:15:30.000000Z",
+  "updated_at": "2024-06-10T16:40:00.000000Z"
+}
+```
+
+### Errors
+
+| Status | Class | Condition |
+|--------|-------|-----------|
+| `404` | `RecursoNaoEncontradoException` | No mechanic with the given `mecanico_id` exists. |
+| `409` | `ViolacaoChaveEstrangeiraException` | Integrity error during the update. |
+
+---
+
+## DELETE /mecanicos/\{mecanico_id\}
+
+Permanently remove a mechanic from the system. This operation is blocked if the mechanic has any service orders assigned to them.
+
+### Path parameters
+
+<ParamField path="mecanico_id" type="integer" required>
+  The unique integer ID of the mechanic to delete.
+</ParamField>
+
+### Response `200 OK`
+
+```bash
+curl -X DELETE http://localhost:8000/mecanicos/1
+```
+
+```json
+{
+  "message": "Mecanico removido com sucesso"
+}
+```
+
+### Errors
+
+| Status | Class | Condition |
+|--------|-------|-----------|
+| `404` | `RecursoNaoEncontradoException` | No mechanic with the given `mecanico_id` exists. |
+| `409` | `ViolacaoChaveEstrangeiraException` | Mechanic has associated service orders and cannot be removed. |

@@ -1,0 +1,106 @@
+---
+title: "DiagnosticoTecnico: initial vehicle inspection schema"
+sidebarTitle: "Diagnostics"
+description: "Schema and field reference for DiagnosticoTecnico — the initial technical inspection record linked 1:1 to each service order in the Oficina Mecânica API."
+---
+
+Each service order has exactly one technical diagnostic (`DiagnosticoTecnico`) representing the mechanic's initial inspection of the vehicle before any work begins. This is a strict 1:1 relationship enforced at the database level via a unique foreign key constraint — no service order can have more than one diagnostic record, and no diagnostic can exist without a linked service order.
+
+## Fields
+
+<ResponseField name="id" type="integer">
+  Auto-generated primary key. Assigned by the database on creation.
+</ResponseField>
+
+<ResponseField name="analise_mecanico" type="string" required>
+  The mechanic's written analysis of the vehicle's condition at the time of intake. Must be between **3 and 150 characters**. This field captures the professional assessment that justifies the proposed work.
+</ResponseField>
+
+<ResponseField name="quilometragem" type="integer" required>
+  The vehicle's odometer reading at intake, in kilometres. Must be **≥ 0**. Defaults to `0` if not provided. Used to track service intervals and validate future scheduled maintenance.
+</ResponseField>
+
+<ResponseField name="avarias_latarias" type="string" required>
+  A description of any existing bodywork damage observed during the intake inspection. Must be between **3 and 150 characters**. This protects both the workshop and the client by documenting pre-existing damage before the vehicle enters the workshop.
+</ResponseField>
+
+<ResponseField name="nivel_combustivel" type="NivelCombustivel enum">
+  The fuel level observed at intake. Defaults to `medio`. Accepted values:
+
+  | Value    | Meaning           |
+  |----------|-------------------|
+  | `alto`   | High fuel level   |
+  | `medio`  | Medium fuel level |
+  | `baixo`  | Low fuel level    |
+</ResponseField>
+
+<ResponseField name="aprovado_cliente" type="boolean">
+  Indicates whether the client formally approved this diagnostic report. Defaults to `true`. When `false`, the diagnostic has been filed but the client has not yet validated the mechanic's assessment.
+</ResponseField>
+
+<ResponseField name="ordem_servico_id" type="integer" required>
+  Foreign key referencing the associated `OrdemServico`. This column has a **unique constraint**, enforcing the 1:1 relationship. Each service order can be linked to at most one diagnostic.
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  ISO 8601 timestamp of when the record was created. Set automatically by the server in UTC.
+</ResponseField>
+
+<ResponseField name="updated_at" type="datetime">
+  ISO 8601 timestamp of the last update. Refreshed automatically on every write operation in UTC.
+</ResponseField>
+
+## Example
+
+The following record corresponds to the first seed service order — a routine preventive oil change on a 2022 Chevrolet Onix:
+
+```json
+{
+  "id": 1,
+  "analise_mecanico": "Troca de óleo dentro do prazo preventivo.",
+  "quilometragem": 35200,
+  "avarias_latarias": "Sem avarias visíveis.",
+  "nivel_combustivel": "alto",
+  "aprovado_cliente": true,
+  "ordem_servico_id": 1,
+  "created_at": "2025-01-01T10:00:00Z",
+  "updated_at": "2025-01-01T10:00:00Z"
+}
+```
+
+Here is a more detailed diagnostic from a complex injection fault service order:
+
+```json
+{
+  "id": 3,
+  "analise_mecanico": "Bico injetor 2 travado aberto e sonda lambda com leitura lenta.",
+  "quilometragem": 52400,
+  "avarias_latarias": "Para-choque dianteiro levemente ralado.",
+  "nivel_combustivel": "baixo",
+  "aprovado_cliente": true,
+  "ordem_servico_id": 3,
+  "created_at": "2025-01-05T09:00:00Z",
+  "updated_at": "2025-01-05T09:00:00Z"
+}
+```
+
+## Business Rules
+
+### One diagnostic per service order
+
+The `ordem_servico_id` field carries a **unique database constraint**. Attempting to create a second `DiagnosticoTecnico` for a service order that already has one will return:
+
+```json
+{
+  "status_code": 409,
+  "detail": "Dado já existe no sistema"
+}
+```
+
+This maps to `CampoDuplicadoException` in the application exception hierarchy.
+
+### Diagnostic approval vs. item approval
+
+<Note>
+  `aprovado_cliente` on a `DiagnosticoTecnico` record is a separate flag from the `aprovado` field on `ItemServico` and `ItemPeca` records. A client can approve the overall diagnostic assessment (`aprovado_cliente = true`) while still declining individual service or parts line items (`aprovado = false` on those records). The diagnostic approval reflects agreement with the mechanic's initial findings; item-level approval controls what actually gets billed.
+</Note>
