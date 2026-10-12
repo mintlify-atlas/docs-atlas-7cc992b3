@@ -1,7 +1,7 @@
 ---
-title: "REST API endpoints for vehicles (veiculos)"
+title: "Vehicle Management Endpoints — Oficina Mecânica API"
 sidebarTitle: "Vehicles"
-description: "CRUD endpoints for client vehicles. Vehicles must be linked to an existing client. Supports filtering by license plate and client ID."
+description: "Create, list, fetch, update, and delete client vehicles. Filter by license plate or client ID. Nested client data on single-vehicle fetch."
 ---
 
 The **Vehicles** resource (`/veiculos`) represents the cars, trucks, and other vehicles registered at the workshop. Every vehicle must be associated with an existing client through the `cliente_id` foreign key — the service validates the client's existence before creating or reassigning a vehicle. License plates (`placa`) are unique across the system, so attempting to register a duplicate plate returns a `409 Conflict`. Vehicles also carry a fuel type classification via the `CombustivelVeiculo` enum. Fetching a single vehicle by ID (`GET /veiculos/{id}`) is the only endpoint that returns the full nested client object embedded in the response.
@@ -12,7 +12,7 @@ The **Vehicles** resource (`/veiculos`) represents the cars, trucks, and other v
 
 ---
 
-## POST /veiculos/
+## POST /veiculos
 
 Register a new vehicle and link it to an existing client.
 
@@ -44,7 +44,7 @@ Register a new vehicle and link it to an existing client.
   | `gasolina` | Gasoline |
   | `alcool` | Ethanol |
   | `flex` | Flex fuel — gasoline or ethanol (default) |
-  | `hibrido` | Hybrid |
+  | `hibribo` | Hybrid (note: the enum serializes as `"hibribo"` — a typo in the source that is preserved for backward compatibility) |
   | `diesel` | Diesel |
   | `eletrico` | Electric |
 </ParamField>
@@ -96,7 +96,7 @@ Returns the newly created vehicle as a `VeiculoPublic` object.
 ### Example
 
 ```bash
-curl -X POST http://localhost:8000/veiculos/ \
+curl -X POST http://localhost:8000/veiculos \
   -H 'Content-Type: application/json' \
   -d '{
     "placa": "ABC1D23",

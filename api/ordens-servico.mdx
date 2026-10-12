@@ -1,13 +1,13 @@
 ---
-title: "Service orders (OrdemServico): schema and lifecycle"
+title: "Service Orders — Schema, Lifecycle, and Relationships"
 sidebarTitle: "Service Orders"
-description: "Schema, fields, status lifecycle, and relationships for the OrdemServico entity — the central workflow object of the Oficina Mecânica API."
+description: "Schema, status lifecycle, valor_total formula, and relationships for OrdemServico — the central workflow object of the Oficina Mecânica API."
 ---
 
-`OrdemServico` is the central entity of the entire workshop system. Every time a vehicle arrives at the shop, a service order is opened that ties together the assigned mechanic, the vehicle being serviced, the technician's diagnostic notes, all labor performed (via `ItemServico`), all parts consumed (via `ItemPeca`), and all payments collected. The order's `status` drives the business workflow from scheduling through to completion or cancellation, and its `valor_total` is a running total that reflects only the approved work billed to the customer.
+`OrdemServico` is the hub of the entire workshop system. Every time a vehicle arrives at the shop, a service order is opened that ties together the assigned mechanic, the vehicle being serviced, the technician's diagnostic record, all labor performed (via `ItemServico`), all parts consumed (via `ItemPeca`), and all payments collected. The order's `status` drives the business workflow from scheduling through to completion or cancellation, and its `valor_total` accumulates the billable cost of all approved work.
 
 <Note>
-  There is no dedicated `/ordens-servico/` route exposed in this version of the API. Service orders are created and managed indirectly through their related resources — `ItemServico`, `ItemPeca`, `DiagnosticoTecnico`, and `Pagamento`. Each of those endpoints accepts an `ordem_servico_id` that links the record to its parent order.
+  There is no dedicated `/ordens-servico/` route exposed in this version of the API. Service orders are created and managed indirectly through their related resources — `ItemServico`, `ItemPeca`, `Diagnostico`, and `Pagamento`. Each of those endpoints accepts an `ordem_servico_id` that links the record to its parent order.
 </Note>
 
 ---
@@ -33,7 +33,7 @@ The `OrdemServico` table (`ordemservico`) carries the following fields.
 </ResponseField>
 
 <ResponseField name="observacao" type="string">
-  Free-text field (max 150 characters) for the mechanic's notes — initial complaint description, customer instructions, or any other relevant remarks.
+  Free-text field (max 150 characters) for the mechanic's notes — initial complaint description, customer instructions, or any other relevant remarks. This field is non-nullable; a value must always be provided.
 </ResponseField>
 
 <ResponseField name="valor_total" type="float">
@@ -72,20 +72,20 @@ The `StatusOrdemServico` enum (defined in `app/models/enums.py`) governs the sta
 
 The typical forward progression through a healthy order is:
 
-```
+```text
 agendada → em_orcamento → em_andamento → concluida
 ```
 
 A cancellation can occur from any active state:
 
-```
+```text
 agendada → cancelada
 em_orcamento → cancelada
 em_andamento → cancelada
 ```
 
 <Warning>
-  Orders with status `concluida` or `cancelada` are considered closed. Adding, modifying, or removing `ItemServico`, `ItemPeca`, `DiagnosticoTecnico`, or `Pagamento` records linked to a closed order is not permitted. Attempting to do so will raise a **422 Unprocessable Entity** (business rule violation).
+  Orders with status `concluida` or `cancelada` are considered closed. Adding, modifying, or removing `ItemServico`, `ItemPeca`, `Diagnostico`, or `Pagamento` records linked to a closed order is not permitted. Attempting to do so raises a **422 Unprocessable Entity** (business rule violation).
 </Warning>
 
 ---
@@ -95,10 +95,10 @@ em_andamento → cancelada
 `OrdemServico` is the hub of the relational model. The following associations are defined on the SQLModel entity.
 
 | Cardinality | Related entity | Description |
-|-------------|---------------|-------------|
-| **1 : 1** | `DiagnosticoTecnico` | Optional technical diagnostic record created by the mechanic during the `em_orcamento` phase. Contains findings, recommended services, and parts. |
-| **1 : N** | `ItemServico` | Labor line-items linked to this order. Each record references a `Servico` from the catalog and stores the hours worked and hourly rate charged for that specific order. |
-| **1 : N** | `ItemPeca` | Parts line-items linked to this order. Each record references a `Peca` from the catalog and stores the quantity and unit price at the time of use. |
+|-------------|----------------|-------------|
+| **1 : 1** | `Diagnostico` | Optional diagnostic record created by the mechanic during the `em_orcamento` phase. Contains the mechanic's analysis, mileage, body damage notes, fuel level, and customer approval status. |
+| **1 : N** | `ItemServico` | Labor line-items linked to this order. Each record references a `Servico` from the catalog and stores the hours worked (`tempo_hora`) and the hourly rate (`valor_hora`) charged for that specific order. |
+| **1 : N** | `ItemPeca` | Parts line-items linked to this order. Each record references a `Peca` from the catalog and stores the quantity used (`quantidade`) and the unit price (`preco_unitario`) at the time of use. |
 | **1 : N** | `Pagamento` | Payment transactions recorded against this order. An order may receive multiple partial payments. |
 | **N : 1** | `Veiculo` | The vehicle being serviced. A single vehicle may have many orders over its lifetime. |
 | **N : 1** | `Mecanico` | The mechanic responsible for the order. A mechanic may handle many concurrent or historical orders. |
@@ -111,7 +111,7 @@ The `valor_total` field accumulates the billable cost of all **approved** work o
 
 The formula is:
 
-```
+```text
 valor_total =
   Σ (ItemServico.tempo_hora × ItemServico.valor_hora)   -- approved service items only
   +

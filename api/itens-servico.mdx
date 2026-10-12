@@ -1,59 +1,117 @@
 ---
-title: "ItemServico: service line items on a service order"
+title: "ItemServico: service line items for a service order"
 sidebarTitle: "Service Items"
-description: "Schema, approval workflow, and price invariance rules for ItemServico — the associative entity linking services to service orders with time, rate, and approval tracking."
+description: "Schema, approval workflow, and price-invariance rules for ItemServico — links workshop services to orders with hours, frozen rate, and approval."
 ---
 
-`ItemServico` is the associative entity that links a `Servico` from the workshop's service catalog to a `OrdemServico`. Each record captures how many hours were worked (`tempo_hora`), the hourly rate that was applied at the time the item was created (`valor_hora`), and whether the client approved this specific line item. A single service order can have multiple `ItemServico` records — one for each distinct service performed during the visit.
+`ItemServico` is the associative entity that links a `Servico` from the workshop's service catalog to a `OrdemServico`. Each record captures how many hours were worked (`tempo_hora`), the hourly rate that was frozen at item creation (`valor_hora`), and whether the client approved this specific line item. A single service order can have multiple `ItemServico` records — one for each distinct service performed during the visit.
 
-## Fields
+This resource has no standalone route file. Service item operations are performed through the `/ordens-servico` endpoint family.
+
+## Schema
+
+### Request fields (create / update)
+
+<ParamField body="tempo_hora" type="integer">
+  Number of hours worked on this service. Must be **greater than 0**. Defaults to `1`.
+</ParamField>
+
+<ParamField body="valor_hora" type="float">
+  Hourly rate applied for this service, in Brazilian Reais (BRL). Must be **≥ 0**. Defaults to `0.0`. This value is **frozen at creation** — it is copied from `Servico.preco` when the item is added and is unaffected by future catalog price changes.
+</ParamField>
+
+<ParamField body="aprovado" type="boolean">
+  Whether the client approved this service line item. Defaults to `true`. Items with `aprovado = false` are excluded from `OrdemServico.valor_total` and from payment eligibility.
+</ParamField>
+
+<ParamField body="servico_id" type="integer" required>
+  Foreign key referencing the `Servico` catalog entry this line item is based on.
+</ParamField>
+
+<ParamField body="ordem_servico_id" type="integer" required>
+  Foreign key referencing the `OrdemServico` this line item belongs to.
+</ParamField>
+
+### Response fields
 
 <ResponseField name="id" type="integer">
   Auto-generated primary key. Assigned by the database on creation.
 </ResponseField>
 
 <ResponseField name="tempo_hora" type="integer">
-  The number of hours worked on this service. Must be **greater than 0**. Defaults to `1`. Multiplied by `valor_hora` to determine this item's labour contribution to the order total.
+  Number of hours worked on this service.
 </ResponseField>
 
 <ResponseField name="valor_hora" type="float">
-  The hourly rate applied for this service, in Brazilian Reais (BRL). Must be **≥ 0**. Defaults to `0.0`. This value is **frozen at creation time** — it reflects the `Servico.preco` value at the moment the item was added to the order and will not be affected by future catalog price changes.
+  Hourly rate frozen at item creation, in BRL.
 </ResponseField>
 
 <ResponseField name="aprovado" type="boolean">
-  Whether the client approved this specific service line item. Defaults to `true`. Items with `aprovado = false` are excluded from the order's `valor_total` calculation and from payment eligibility.
+  Whether the client approved this line item.
 </ResponseField>
 
-<ResponseField name="servico_id" type="integer" required>
-  Foreign key referencing the `Servico` catalog entry that this line item is based on.
+<ResponseField name="servico_id" type="integer">
+  Foreign key referencing the `Servico` catalog entry.
 </ResponseField>
 
-<ResponseField name="ordem_servico_id" type="integer" required>
-  Foreign key referencing the `OrdemServico` that this line item belongs to.
+<ResponseField name="ordem_servico_id" type="integer">
+  Foreign key referencing the parent `OrdemServico`.
 </ResponseField>
 
 <ResponseField name="created_at" type="datetime">
-  ISO 8601 timestamp of when the record was created. Set automatically by the server in UTC.
+  ISO 8601 UTC timestamp of when the record was created.
 </ResponseField>
 
 <ResponseField name="updated_at" type="datetime">
-  ISO 8601 timestamp of the last update. Refreshed automatically on every write operation in UTC.
+  ISO 8601 UTC timestamp of the last update.
 </ResponseField>
+
+### Update fields (all optional)
+
+A `PATCH` request may include any subset of the following fields. The order must not be in `concluida` or `cancelada` status.
+
+<ParamField body="tempo_hora" type="integer">
+  Updated hours worked. Must be greater than 0.
+</ParamField>
+
+<ParamField body="valor_hora" type="float">
+  Updated hourly rate. Must be ≥ 0.
+</ParamField>
+
+<ParamField body="aprovado" type="boolean">
+  Updated client approval flag.
+</ParamField>
+
+<ParamField body="servico_id" type="integer">
+  Reassigns the item to a different service in the catalog.
+</ParamField>
+
+<ParamField body="ordem_servico_id" type="integer">
+  Reassigns the item to a different service order.
+</ParamField>
+
+## Error Codes
+
+| Status | Exception                          | When it occurs                                                               |
+|--------|------------------------------------|------------------------------------------------------------------------------|
+| 404    | `RecursoNaoEncontradoException`    | The item ID, `servico_id`, or `ordem_servico_id` does not exist.             |
+| 409    | `ViolacaoChaveEstrangeiraException` | The supplied `servico_id` or `ordem_servico_id` references a non-existent record. |
+| 422    | `RegraDeNegocioException`          | Attempt to add or modify an item on a `concluida` or `cancelada` order.      |
 
 ## Price Invariance
 
-When an `ItemServico` is created, the system copies the current `Servico.preco` value into `valor_hora`. From that moment on, `valor_hora` is **immutable with respect to catalog changes**: if the catalog price for that service is later updated (e.g., the workshop raises its rates), existing `ItemServico` records retain the price that was in effect when the item was first added. This ensures consistent invoicing across the full lifespan of a service order.
+When an `ItemServico` is created, the system copies the current `Servico.preco` value into `valor_hora`. From that point on `valor_hora` is immutable with respect to catalog changes — if the workshop raises or lowers the service price later, existing `ItemServico` records retain the rate that was in effect when the item was first added. This ensures consistent invoicing across the full lifespan of a service order.
 
-```
-labour_contribution = tempo_hora × valor_hora   (only if aprovado = true)
+```text
+labour_contribution = tempo_hora × valor_hora   (only when aprovado = true)
 ```
 
 ## Approval Workflow
 
-Client approval is tracked at the individual line-item level via the `aprovado` boolean. This supports partial approval scenarios where a client agrees to some services but declines others during the budgeting phase.
+Client approval is tracked at the individual line-item level via the `aprovado` boolean. This supports partial-approval scenarios where a client agrees to some services but declines others during the budgeting phase.
 
 <Note>
-  When a client approves only a subset of service items, only the approved items are summed into `OrdemServico.valor_total`. For example, if an order has three services — alignment (approved), shock absorber replacement (approved), and a full engine scan (declined) — the order total will only include alignment and shock absorber labour. The declined item remains on the order as a record of what was proposed and refused.
+  Only items with `aprovado = true` are counted in `OrdemServico.valor_total`. A declined item (`aprovado = false`) remains on the order as a record of what was proposed and refused, but contributes R$ 0.00 to the billable total regardless of hours or rate.
 </Note>
 
 ## Locked Orders
@@ -67,9 +125,23 @@ Service orders with a status of `concluida` (completed) or `cancelada` (cancelle
 }
 ```
 
-## Example
+## Examples
 
-The following record is taken from seed order #1 (routine oil change on a 2022 Chevrolet Onix). Note that `aprovado` is `false` — this item was logged as part of the initial budget but the client had not yet confirmed it at the time the seed snapshot was taken:
+### Create request
+
+The following body adds a service item for an oil change (service ID 1, R$ 85.00/h) to service order 1. The item has not yet been approved by the client:
+
+```json
+{
+  "tempo_hora": 1,
+  "valor_hora": 85.0,
+  "aprovado": false,
+  "servico_id": 1,
+  "ordem_servico_id": 1
+}
+```
+
+### Create response
 
 ```json
 {
@@ -84,7 +156,9 @@ The following record is taken from seed order #1 (routine oil change on a 2022 C
 }
 ```
 
-Here is an approved item from order #3 (electronic injection fault), where both the scanner diagnosis and injector cleaning were confirmed by the client:
+### Approved item example
+
+The following record is from order #3 (electronic injection fault). The ultrasonic injector cleaning service was approved by the client — service catalog entry #9, priced at R$ 210.00:
 
 ```json
 {
@@ -103,3 +177,4 @@ Here is an approved item from order #3 (electronic injection fault), where both 
 
 - [Service Orders](/api/ordens-servico) — the parent entity that groups all line items for a single workshop visit
 - [Services](/api/servicos) — the catalog of available workshop services referenced by `servico_id`
+- [Part Items](/api/itens-peca) — parts line items on the same service order

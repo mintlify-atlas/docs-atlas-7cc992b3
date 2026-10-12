@@ -1,7 +1,7 @@
 ---
-title: "Set up PostgreSQL or SQLite for Oficina Mecânica API"
+title: "Database Setup: SQLite and PostgreSQL Configuration"
 sidebarTitle: "Database Setup"
-description: "Configure a PostgreSQL or SQLite database for the Oficina Mecânica API by setting the DATABASE_URL environment variable and verifying the connection."
+description: "Set the DATABASE_URL to use SQLite for development or PostgreSQL for production. Covers check_same_thread, the psycopg2 driver, dotenv, and get_session()."
 ---
 
 The Oficina Mecânica API supports two database backends: **SQLite** for local development and **PostgreSQL** for production deployments. The choice is controlled entirely by the `DATABASE_URL` environment variable — no code changes required. If the variable is not set, the API defaults to a local SQLite file, so you can run the project immediately without any database installation.
@@ -58,8 +58,8 @@ PostgreSQL is the recommended engine for staging and production environments.
 
     Adjust the host, port, username, password, and database name to match your setup.
   </Step>
-  <Step title="Verify the psycopg2 driver">
-    The `psycopg2` adapter is already listed in `requirements.txt` — both `psycopg2==3.3.6` and `psycopg2-binary==3.3.6` are included. Install the project dependencies if you have not done so yet:
+  <Step title="Verify the database drivers">
+    The project ships with both the modern `psycopg` (v3) driver (`psycopg==3.3.6`, `psycopg-binary==3.3.6`) and the classic `psycopg2==2.9.13` adapter in `requirements.txt`. The `postgresql+psycopg2` scheme in the connection string uses `psycopg2`. Install all dependencies if you have not done so yet:
 
     ```bash
     pip install -r requirements.txt
@@ -68,7 +68,7 @@ PostgreSQL is the recommended engine for staging and production environments.
 </Steps>
 
 <Tip>
-  Use a `.env` file with `python-dotenv` (already a project dependency) to store `DATABASE_URL` without manually exporting it every session. Create `.env` in the project root and the library will load it automatically at startup.
+  Use a `.env` file with `python-dotenv` (already a project dependency at `python-dotenv==1.2.4`) to store `DATABASE_URL` without manually exporting it every session. Create `.env` in the project root and the library will load it automatically at startup.
 </Tip>
 
 ## How the connection works
@@ -76,7 +76,7 @@ PostgreSQL is the recommended engine for staging and production environments.
 The `app/core/database.py` module is the single place where the database connection is configured. Here is what it does:
 
 1. **Reads `DATABASE_URL`** — `os.getenv("DATABASE_URL", "sqlite:///./oficina_mecanica.db")` provides the SQLite fallback when the variable is absent.
-2. **Configures `connect_args`** — the `check_same_thread=False` flag is added only when the URL starts with `sqlite`, which is required for SQLite to work correctly with FastAPI's async request handling. PostgreSQL connections leave this dict empty.
+2. **Configures `connect_args`** — the `check_same_thread=False` flag is added **only** when the URL starts with `sqlite`, which is required for SQLite to work correctly with FastAPI's threaded request handling. PostgreSQL connections receive an empty dict.
 3. **Creates the engine** — `create_engine(DATABASE_URL, connect_args=connect_args)` builds the SQLAlchemy engine that all sessions share.
 4. **Provides `get_session()`** — this generator function is used as a FastAPI dependency via `Depends(get_session)`. It opens a `Session`, yields it to the route handler, and closes it when the request completes.
 

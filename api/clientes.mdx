@@ -1,7 +1,7 @@
 ---
-title: "REST API endpoints for clients (clientes)"
+title: "Client Management Endpoints — Oficina Mecânica API"
 sidebarTitle: "Clients"
-description: "CRUD endpoints for workshop clients. POST to create, GET to list with pagination and filters, GET /{id} to fetch, PATCH to update, DELETE to remove."
+description: "Create, list, fetch, update, and delete workshop clients. Includes pagination filters, unique email validation, and FK-safe deletion."
 ---
 
 The **Clients** resource (`/clientes`) represents the vehicle owners who bring their cars to the workshop. Each client record stores a name, phone number, and a unique email address. Clients are the root entity of the data model — vehicles are owned by clients, and service orders are opened against a client's vehicle. Attempting to delete a client who still has vehicles or open service orders will return a `409 Conflict`.
@@ -92,7 +92,7 @@ List all clients with optional pagination and filtering by name or email.
 </ParamField>
 
 <ParamField query="tamanho_pagina" type="integer" default="10">
-  Number of records per page. Must be between 1 and 100.
+  Number of records per page. Intended range is 1–100, though the source constraint uses non-standard keyword arguments (`g1`/`len`) rather than `ge`/`le`, so FastAPI does not enforce the bounds at the query-parameter level.
 </ParamField>
 
 <ParamField query="nome" type="string">

@@ -1,7 +1,7 @@
 ---
-title: "Configure the Oficina Mecânica API server"
+title: "Oficina Mecânica API: Environment and Logging Setup"
 sidebarTitle: "Configuration"
-description: "Environment variables, database connection strings, and YAML logging configuration for the Oficina Mecânica API. Covers PostgreSQL, SQLite, and log rotation settings."
+description: "Learn to configure Oficina Mecânica API using the DATABASE_URL environment variable and the app/config/config.yaml logging settings."
 ---
 
 The Oficina Mecânica API is configured through two complementary mechanisms: a single **`DATABASE_URL` environment variable** that controls which database the application connects to, and a **`app/config/config.yaml`** file that governs application identity, log file paths, logging handlers, and per-logger verbosity levels. Together they allow you to run the same codebase against a lightweight SQLite file for local development and a hardened PostgreSQL cluster in production without touching a single line of Python.

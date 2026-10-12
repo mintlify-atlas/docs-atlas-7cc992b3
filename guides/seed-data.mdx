@@ -1,7 +1,7 @@
 ---
-title: "Seed the database with sample workshop data"
+title: "Seed the Oficina Mecânica Database with Sample Data"
 sidebarTitle: "Seed Data"
-description: "Populate the Oficina Mecânica database with realistic sample data: 10 clients, 20 vehicles, 10 mechanics, 30 parts, 30 services, 15 service orders, and more."
+description: "Run python -m app.seed to load 10 clients, 20 vehicles, 10 mechanics, 30 parts, 30 services, 15 service orders, 10 diagnostics, and 10 payments."
 ---
 
 The `app/seed.py` script populates the database with a rich set of realistic sample data so you can explore the full API immediately after setup — without having to create records by hand. All data is based on a Brazilian mechanical workshop context, with real Brazilian names, license plates, auto part names, and service descriptions.
@@ -16,13 +16,17 @@ python -m app.seed
 
 The script is **idempotent**. On startup it queries the `cliente` table to check whether data already exists. If at least one client record is found, it prints the following message and exits immediately without inserting any duplicates:
 
-```
+```text
 Bando de dados já alimentado.
 ```
 
+<Note>
+  The idempotency message `"Bando de dados já alimentado."` is a typo in the source (`Bando` instead of `Banco`) but is reproduced here exactly as it appears in `app/seed.py`.
+</Note>
+
 On a fresh database the script prints progress markers and finishes with:
 
-```
+```text
 Semente iniciada
 Semente virou arvore com sucesso!
 ```
@@ -35,7 +39,7 @@ The seed script inserts records in dependency order — clients and mechanics be
 |---|---|---|
 | `Cliente` | 10 | Real Brazilian names with unique email addresses and phone numbers |
 | `Veiculo` | 20 | Distributed across all 10 clients; various brands, models, and model years (2018–2023) |
-| `Mecanico` | 10 | Specialists covering `mecanica_geral`, `injecao_eletronica`, `ar_condicionado`, `motor_retifica`, `suspensao_freios`, and `cambio_automatico` |
+| `Mecanico` | 10 | Specialists covering `MECANICA_GERAL`, `INJECAO_ELETRONICA`, `AR_CONDICIONADO`, `MOTOR_RETIFICA`, `SUSPENSAO_FREIOS`, and `CAMBIO_AUTOMATICO` |
 | `Peca` | 30 | Real auto parts with unit prices — oil filters, brake pads, shock absorbers, timing belts, sensors, and more |
 | `Servico` | 30 | Real workshop services with labor prices — oil changes, alignment, brake service, electronic diagnostics, preventive reviews, and more |
 | `OrdemServico` | 15 | Mix of statuses: 8 `CONCLUIDA`, 3 `EM_ANDAMENTO`, 3 `AGENDADA`, 1 `CANCELADA` |
@@ -50,14 +54,14 @@ The following excerpts show a representative selection of records from each main
 
 ```python
 # Sample clients (nome, telefone, email)
-("Carlos Eduardo Silva",   "85999911101", "carlos.silva@email.com")
-("Mariana Albuquerque",    "85988822202", "mariana.albuquerque@email.com")
-("Fernando Henrique Rocha","85997733303", "fernando.rocha@email.com")
+("Carlos Eduardo Silva",    "85999911101", "carlos.silva@email.com")
+("Mariana Albuquerque",     "85988822202", "mariana.albuquerque@email.com")
+("Fernando Henrique Rocha", "85997733303", "fernando.rocha@email.com")
 
 # Sample vehicles (placa, marca, modelo, ano, combustivel)
-("ABC1D23", "Chevrolet", "Onix 1.0 Turbo",    2022, CombustivelVeiculo.FLEX)
-("XYZ9K87", "Toyota",    "Corolla 2.0 Flex",  2021, CombustivelVeiculo.FLEX)
-("POU8Y11", "Honda",     "Civic 2.0 EXL",     2019, CombustivelVeiculo.GASOLINA)
+("ABC1D23", "Chevrolet", "Onix 1.0 Turbo",   2022, CombustivelVeiculo.FLEX)
+("XYZ9K87", "Toyota",    "Corolla 2.0 Flex", 2021, CombustivelVeiculo.FLEX)
+("POU8Y11", "Honda",     "Civic 2.0 EXL",    2019, CombustivelVeiculo.GASOLINA)
 
 # Sample mechanics (nome, especialidade)
 ("Roberto 'Beto' Santos", EspecialidadeMecanico.MECANICA_GERAL)
@@ -65,16 +69,16 @@ The following excerpts show a representative selection of records from each main
 ("Andre Luis Pinheiro",   EspecialidadeMecanico.SUSPENSAO_FREIOS)
 
 # Sample services (descricao, preco)
-("Troca de Óleo e Filtro de Óleo",          85.00)
-("Diagnóstico Eletrônico via Scanner",      150.00)
-("Revisão Preventiva de 50.000 km",         650.00)
-("Alinhamento e Balanceamento 3D",          140.00)
+("Troca de Óleo e Filtro de Óleo",     85.00)
+("Diagnóstico Eletrônico via Scanner", 150.00)
+("Revisão Preventiva de 50.000 km",    650.00)
+("Alinhamento e Balanceamento 3D",     140.00)
 
 # Sample parts (nome, preco)
-("Pastilha de Freio Dianteira",   190.00)
-("Amortecedor Dianteiro",         450.00)
-("Sensor de Oxigênio (Sonda Lambda)", 290.00)
-("Kit Correia + Tensor",          280.00)
+("Pastilha de Freio Dianteira",        190.00)
+("Amortecedor Dianteiro",              450.00)
+("Sensor de Oxigênio (Sonda Lambda)",  290.00)
+("Kit Correia + Tensor",               280.00)
 ```
 
 <Tip>

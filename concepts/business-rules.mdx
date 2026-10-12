@@ -1,7 +1,7 @@
 ---
-title: "Business rules: order locking, approval, and price invariance"
+title: "Business rules: locking, approval, and price invariance"
 sidebarTitle: "Business Rules"
-description: "Three core business rules govern the Oficina Mecânica API: status-based order locking, item approval before billing, and immutable applied prices on service and part items."
+description: "Three rules protect service order integrity: terminal status blocks item edits, approval flags gate billing totals, and prices freeze at insertion."
 ---
 
 The Oficina Mecânica API enforces three business rules that protect the integrity of service order data from the moment a job is scheduled through to final payment. These rules are applied in the service layer (`app/services/`) before any database write is attempted, meaning they are independent of the underlying storage engine and are consistent across all consumers of the API. Breaking any of them yields a structured error response — never a silent data corruption.

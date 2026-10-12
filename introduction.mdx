@@ -1,20 +1,22 @@
 ---
 title: "Oficina Mecânica API: Workshop Management REST API"
 sidebarTitle: "Introduction"
-description: "Oficina Mecânica API is a FastAPI REST service for mechanical workshop management. Covers clients, vehicles, mechanics, service orders, parts, diagnostics, and payments."
+description: "A FastAPI and SQLAlchemy REST service for automotive workshop management, covering clients, vehicles, mechanics, orders, and payments."
 ---
 
 The **Oficina Mecânica API** is a production-ready REST service built with FastAPI and SQLAlchemy that brings structure and traceability to the day-to-day operations of an automotive workshop. From the first phone call with a client through vehicle intake, mechanic assignment, diagnostic, parts approval, and final payment, every stage of a repair job is modelled as a first-class resource with its own endpoints, validation, and lifecycle rules — giving workshop owners a reliable backend on which to build desktop, mobile, or web front-ends.
 
 ## Core Entities
 
-The data model is organized around eight interconnected resources that mirror the real-world workflow of a mechanical workshop.
+The data model is organized around ten interconnected resources that mirror the real-world workflow of a mechanical workshop.
 
 | Entity | Description |
 |---|---|
 | **Cliente** | The workshop's customers. Stores personal and contact information and acts as the owner of one or more vehicles. |
 | **Veiculo** | A vehicle registered under a client. Captures make, model, year, license plate, mileage, fuel type (`gasolina`, `alcool`, `flex`, `hibrido`, `diesel`, `eletrico`), and current fuel level (`alto`, `medio`, `baixo`). |
 | **Mecanico** | A workshop employee qualified in one or more specialties (`mecanica_geral`, `injecao_eletronica`, `suspensao_freios`, `cambio_automatico`, `ar_condicionado`, `motor_retifica`). |
+| **Servico** | A labour type in the workshop catalogue (e.g. "oil change", "brake pad replacement"). Stores a description and a base price used when adding service line-items to an order. |
+| **Peca** | A spare part in the parts catalogue. Stores a name and a current catalogue price, which is copied onto each `ItemPeca` line-item at the time of order to preserve historical accuracy. |
 | **OrdemServico** | The central document that ties a vehicle, a client, and a mechanic together for a single visit. Drives the full repair lifecycle from scheduling to completion or cancellation. |
 | **Diagnostico** | A structured finding attached to a service order describing the problem identified by the mechanic. |
 | **ItemServico** | A line-item for a labour operation (e.g. "oil change", "brake pad replacement") on a service order. Carries a unit price and approval status. |

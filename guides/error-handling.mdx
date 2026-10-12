@@ -1,7 +1,7 @@
 ---
-title: "Error handling and exception types in Oficina Mecânica API"
+title: "Error Handling and Exception Types in the Workshop API"
 sidebarTitle: "Error Handling"
-description: "How the Oficina Mecânica API handles errors: custom exception classes, HTTP status codes, error response structure, and the error middleware that catches unhandled exceptions."
+description: "All errors follow a consistent JSON envelope. Six exceptions map to HTTP codes; middleware safely catches SQLAlchemy errors and all unhandled exceptions."
 ---
 
 All errors produced by the Oficina Mecânica API are returned as JSON with a consistent two-field shape. A global FastAPI middleware intercepts every exception — whether it is a known business rule violation, a database constraint error, or a completely unexpected crash — and converts it into a structured response before it reaches the client. This means API consumers always receive a predictable JSON body regardless of where the error originated.
@@ -83,7 +83,7 @@ async def error_middleware(request: Request, call_next):
 
 ## Logging middleware
 
-A separate middleware in `app/core/logging_middleware.py` records an access log entry for every request, regardless of whether it succeeded or failed. The log entry captures the HTTP method, request path, response status code, and is emitted at the appropriate log level:
+A separate middleware in `app/core/logging_middleware.py` records an access log entry for every request, regardless of whether it succeeded or failed. The log entry captures the HTTP method, request path, and response status code, and is emitted at the appropriate log level:
 
 - **INFO** — for 2xx and 3xx responses (successful and redirect)
 - **WARNING** — for 4xx responses (client errors)

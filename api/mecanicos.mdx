@@ -1,7 +1,7 @@
 ---
-title: "REST API endpoints for mechanics (mecanicos)"
+title: "Mechanic Management Endpoints — Oficina Mecânica API"
 sidebarTitle: "Mechanics"
-description: "CRUD endpoints for workshop mechanics. Supports filtering by name and specialty. Each mechanic has a defined specialty enum value."
+description: "Create, list, fetch, update, and delete workshop mechanics. Filter by name or specialty. Includes all six EspecialidadeMecanico enum values."
 ---
 
 The **Mechanics** resource (`/mecanicos`) represents the technicians employed by the workshop. Every mechanic record holds a name and a specialty drawn from the `EspecialidadeMecanico` enum, which categorizes the type of work the mechanic is qualified to perform. Mechanics are assigned to service orders; deleting a mechanic who still has service orders linked to them will return a `409 Conflict`.
@@ -94,7 +94,7 @@ List all mechanics with optional pagination and filtering by name or specialty.
 </ParamField>
 
 <ParamField query="tamanho_pagina" type="integer" default="10">
-  Number of records per page. Must be between 1 and 100.
+  Number of records per page. Intended range is 1–100, though the source constraint uses non-standard keyword arguments (`g1`/`len`) rather than `ge`/`le`, so FastAPI does not enforce the bounds at the query-parameter level.
 </ParamField>
 
 <ParamField query="nome" type="string">

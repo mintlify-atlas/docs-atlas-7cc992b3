@@ -1,7 +1,7 @@
 ---
-title: "Run and manage Alembic database migrations"
+title: "Run and Manage Alembic Migrations for the Workshop API"
 sidebarTitle: "Migrations"
-description: "Apply, inspect, and roll back database schema migrations for the Oficina Mecânica API using Alembic. Covers upgrade, downgrade, and current revision commands."
+description: "Apply, inspect, and roll back schema migrations with Alembic. Documents all 10 revision IDs in chain order, plus upgrade, downgrade, and env.py details."
 ---
 
 The Oficina Mecânica API ships with a complete Alembic migration history that builds every table in the schema from scratch. Rather than relying on SQLModel's `create_all()`, all structural changes — table creation, column additions, relationship fixes, and flag additions — are tracked as discrete, versioned migration scripts. This means the database schema is fully reproducible and can be advanced or rolled back at any revision point.
@@ -26,8 +26,8 @@ alembic current
 
 The output shows the revision ID and the migration message, for example:
 
-```
-d576a854b2b8 (head)
+```text
+be66731a642d (head)
 ```
 
 If the database has never had migrations applied, this command prints nothing or reports that the `alembic_version` table does not exist.
@@ -63,7 +63,7 @@ alembic downgrade <revision_id>
 For example, to roll back to the initial model:
 
 ```bash
-alembic downgrade c0f547693aac
+alembic downgrade 31681633a578
 ```
 
 <Warning>
@@ -72,20 +72,20 @@ alembic downgrade c0f547693aac
 
 ## Migration files
 
-All migration scripts live in `app/alembic/versions/`. The chain below reflects the chronological order in which revisions were created. Each file contains both an `upgrade()` function (applied on `alembic upgrade`) and a `downgrade()` function (applied on `alembic downgrade`).
+All migration scripts live in `app/alembic/versions/`. The table below lists all revisions in chronological order — oldest first — as determined by the `down_revision` chain in each file. Each script contains both an `upgrade()` function (applied on `alembic upgrade`) and a `downgrade()` function (applied on `alembic downgrade`).
 
-| Revision | File slug | Description |
-|---|---|---|
-| `31681633a578` | `cria_tabelas_cliente_mecanico_servico_…` | Creates the initial core tables: `cliente`, `mecanico`, `servico`, `peca`, and `veiculo` |
-| `c0f547693aac` | `modelo_completo_inicial` | Expands the schema to the complete initial model with all base columns |
-| `4abf1bc8e421` | `cria_tabela_pagamento_diagnostico` | Adds the `pagamento` and `diagnostico` tables |
-| `946f9c56dc60` | `cria_tabela_associativa_item_servico` | Creates the `item_servico` associative table linking service orders to services |
-| `00657290da5a` | `cria_tabela_associativa_item_servicos` | Creates the `item_servicos` associative table (revised version) |
-| `130492e8d1cc` | `cria_tabela_associativa_item_pecass` | Creates the `item_pecas` associative table linking service orders to parts |
-| `286648a3a95e` | `corrigindo_relacionamentos_peca_item_…` | Fixes relationship definitions between `peca` and `item` tables |
-| `590ff7d8fd5b` | `corrigindo_relacionamentos_peca_item_…` | Second pass of relationship corrections for `peca`/`item` foreign keys |
-| `be66731a642d` | `ajustando_updated_at` | Adjusts `updated_at` column definitions across multiple tables |
-| `d576a854b2b8` | `adicionando_flag_de_aprovacao` | Adds the `aprovado` boolean flag used on `item_servico` and `item_peca` rows |
+| # | Revision | File slug | Description |
+|---|---|---|---|
+| 1 | `31681633a578` | `cria_tabelas_cliente_mecanico_servico_…` | Creates the initial core tables: `cliente`, `mecanico`, `servico`, `peca`, `veiculo`, and `ordemservico` with relationships |
+| 2 | `946f9c56dc60` | `cria_tabela_associativa_item_servico` | Creates the `item_servico` associative table linking service orders to services |
+| 3 | `00657290da5a` | `cria_tabela_associativa_item_servicos` | Creates the `item_servicos` associative table (revised version) |
+| 4 | `130492e8d1cc` | `cria_tabela_associativa_item_pecass` | Creates the `item_pecas` associative table linking service orders to parts |
+| 5 | `286648a3a95e` | `corrigindo_relacionamentos_peca_item_…` | Fixes relationship definitions between `peca` and `item` tables |
+| 6 | `590ff7d8fd5b` | `corrigindo_relacionamentos_peca_item_…` | Second pass of relationship corrections for `peca`/`item` foreign keys |
+| 7 | `4abf1bc8e421` | `cria_tabela_pagamento_diagnostico` | Adds the `pagamento` and `diagnostico` tables |
+| 8 | `c0f547693aac` | `modelo_completo_inicial` | Expands the schema to the complete model with all base columns |
+| 9 | `d576a854b2b8` | `adicionando_flag_de_aprovacao` | Adds the `aprovado` boolean flag to `item_servico` and `item_peca` rows |
+| 10 | `be66731a642d` | `ajustando_updated_at` | Adjusts `updated_at` column definitions across multiple tables |
 
 ## Alembic configuration
 

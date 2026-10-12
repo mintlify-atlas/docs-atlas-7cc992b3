@@ -1,23 +1,23 @@
 ---
-title: "Pagamento: payment records on a service order"
+title: "Pagamento: payment transactions for a service order"
 sidebarTitle: "Payments"
-description: "Schema and business rules for Pagamento — records that log payments made against a service order, with support for PIX, credit, debit, and cash."
+description: "Schema and business rules for Pagamento — records payment events against service orders, supporting PIX, credit, debit, and cash methods."
 ---
 
-`Pagamento` records individual payment transactions made against a service order. Each `Pagamento` represents a discrete monetary event — a full settlement, a deposit, or one instalment in a multi-payment arrangement. A single `OrdemServico` can accumulate multiple `Pagamento` records over time, enabling partial and staged payments without any special configuration.
+`Pagamento` records individual payment transactions made against a service order. Each `Pagamento` represents a discrete monetary event — a full settlement, an advance deposit, or one instalment in a multi-payment arrangement. A single `OrdemServico` can accumulate multiple `Pagamento` records over its lifetime, enabling partial and staged payments without any special configuration.
 
-## Fields
+This resource has no standalone route file. Payment operations are performed through the `/ordens-servico` endpoint family.
 
-<ResponseField name="id" type="integer">
-  Auto-generated primary key. Assigned by the database on creation.
-</ResponseField>
+## Schema
 
-<ResponseField name="valor" type="float" required>
+### Request fields (create / update)
+
+<ParamField body="valor" type="float" required>
   The amount of this payment, in Brazilian Reais (BRL). Must be **greater than 0** — zero-value payments are not permitted.
-</ResponseField>
+</ParamField>
 
-<ResponseField name="forma_pagamento" type="FormaPagamento enum">
-  The payment method used. Defaults to `pix`. Accepted values:
+<ParamField body="forma_pagamento" type="FormaPagamento">
+  Payment method used. Defaults to `pix`. Accepted values:
 
   | Value      | Meaning                              |
   |------------|--------------------------------------|
@@ -25,27 +25,77 @@ description: "Schema and business rules for Pagamento — records that log payme
   | `credito`  | Credit card                          |
   | `debito`   | Debit card                           |
   | `dinheiro` | Cash                                 |
+</ParamField>
+
+<ParamField body="data" type="datetime">
+  Timestamp of when the payment was made, in UTC. Indexed for efficient date-range queries. Defaults to the server's current UTC time at record creation.
+</ParamField>
+
+<ParamField body="ordem_servico_id" type="integer" required>
+  Foreign key referencing the `OrdemServico` this payment is applied to.
+</ParamField>
+
+### Response fields
+
+<ResponseField name="id" type="integer">
+  Auto-generated primary key. Assigned by the database on creation.
+</ResponseField>
+
+<ResponseField name="valor" type="float">
+  Payment amount in BRL.
+</ResponseField>
+
+<ResponseField name="forma_pagamento" type="string">
+  Payment method. One of `pix`, `credito`, `debito`, or `dinheiro`.
 </ResponseField>
 
 <ResponseField name="data" type="datetime">
-  The timestamp of when the payment was made, in UTC. Indexed for efficient querying by date range. Defaults to the server's current time at the moment the record is created.
+  ISO 8601 UTC timestamp of when the payment was made.
 </ResponseField>
 
-<ResponseField name="ordem_servico_id" type="integer" required>
-  Foreign key referencing the `OrdemServico` this payment is applied to.
+<ResponseField name="ordem_servico_id" type="integer">
+  Foreign key referencing the parent `OrdemServico`.
 </ResponseField>
 
 <ResponseField name="created_at" type="datetime">
-  ISO 8601 timestamp of when the record was created. Set automatically by the server in UTC.
+  ISO 8601 UTC timestamp of when the record was created.
 </ResponseField>
 
 <ResponseField name="updated_at" type="datetime">
-  ISO 8601 timestamp of the last update. Refreshed automatically on every write operation in UTC.
+  ISO 8601 UTC timestamp of the last update.
 </ResponseField>
+
+### Update fields (all optional)
+
+A `PATCH` request may include any subset of the following fields.
+
+<ParamField body="valor" type="float">
+  Updated payment amount. Must be greater than 0.
+</ParamField>
+
+<ParamField body="forma_pagamento" type="FormaPagamento">
+  Updated payment method. One of `pix`, `credito`, `debito`, `dinheiro`.
+</ParamField>
+
+<ParamField body="data" type="datetime">
+  Updated payment timestamp.
+</ParamField>
+
+<ParamField body="ordem_servico_id" type="integer">
+  Reassigns the payment to a different service order.
+</ParamField>
+
+## Error Codes
+
+| Status | Exception                          | When it occurs                                                                   |
+|--------|------------------------------------|----------------------------------------------------------------------------------|
+| 404    | `RecursoNaoEncontradoException`    | The payment ID or the referenced `ordem_servico_id` does not exist.              |
+| 409    | `ViolacaoChaveEstrangeiraException` | The supplied `ordem_servico_id` references a non-existent service order.         |
+| 422    | `RegraDeNegocioException`          | The service order has no approved line items — no billable total to pay against. |
 
 ## Payment Methods
 
-**`pix`** — Brazil's instant payment system, operated by the Banco Central do Brasil. Transfers are settled in real time, 24 hours a day, 7 days a week. This is the default `forma_pagamento`.
+**`pix`** — Brazil's instant payment system, operated by the Banco Central do Brasil. Transfers settle in real time, 24 hours a day, 7 days a week. This is the default `forma_pagamento`.
 
 **`credito`** — Credit card payment. The workshop receives the amount subject to the card network's standard processing terms.
 
@@ -57,21 +107,36 @@ description: "Schema and business rules for Pagamento — records that log payme
 
 ### Approved items required
 
-Payments can only be recorded against a service order when at least one approved line item exists — that is, when one or more `ItemServico` or `ItemPeca` records on the order have `aprovado = true`. An order with no approved items has a billable total of zero, and no payment can be applied to it.
+Payments can only be recorded against a service order that has at least one approved line item — that is, at least one `ItemServico` or `ItemPeca` record on the order with `aprovado = true`. An order with no approved items has a billable total of zero and cannot receive a payment.
 
 ### Multiple payments per order
 
-There is no single-payment constraint. A service order can receive any number of `Pagamento` records over its lifetime. This supports common workshop scenarios such as:
+There is no single-payment constraint on `Pagamento`. A service order can receive any number of payment records over its lifetime. This supports common workshop scenarios such as:
 
-- A **deposit** taken when the client authorises the budget, followed by a **final payment** on collection.
-- **Instalment payments** split across different payment methods or dates.
+- A **deposit** taken when the client authorises the budget, followed by a **final settlement** at vehicle collection.
+- **Instalments** split across different payment methods or collection dates.
 - A **partial payment** recorded immediately, with the remainder logged when the client returns.
 
-The API does not enforce that the sum of all payments equals `OrdemServico.valor_total` — over- and under-payment states are both valid and must be managed at the application or reporting layer.
+<Note>
+  The API does not enforce that the sum of all payments equals `OrdemServico.valor_total`. Over- and under-payment states are both valid; balance tracking must be handled at the application or reporting layer.
+</Note>
 
-## Example
+## Examples
 
-The following record is the full settlement for seed order #1 (routine oil change), paid in full via PIX on the day the vehicle was collected:
+### Create request
+
+The following body records a full PIX settlement of R$ 313.00 for service order 1 (routine oil change):
+
+```json
+{
+  "valor": 313.00,
+  "forma_pagamento": "pix",
+  "data": "2025-01-01T14:30:00Z",
+  "ordem_servico_id": 1
+}
+```
+
+### Create response
 
 ```json
 {
@@ -85,9 +150,9 @@ The following record is the full settlement for seed order #1 (routine oil chang
 }
 ```
 
-## Multiple Payments Example
+### Advance deposit examples
 
-The following two records illustrate how partial or staged payments appear in the system. Orders #9 and #10 — both currently `em_andamento` (in progress) — received advance payments while the work was still being carried out:
+Orders #9 and #10 are currently `em_andamento` (in progress) and each received a partial advance deposit while work was still being carried out:
 
 ```json
 [
@@ -95,19 +160,27 @@ The following two records illustrate how partial or staged payments appear in th
     "id": 9,
     "valor": 500.00,
     "forma_pagamento": "pix",
-    "ordem_servico_id": 9
+    "data": "2025-01-14T10:00:00Z",
+    "ordem_servico_id": 9,
+    "created_at": "2025-01-14T10:00:00Z",
+    "updated_at": "2025-01-14T10:00:00Z"
   },
   {
     "id": 10,
     "valor": 600.00,
     "forma_pagamento": "credito",
-    "ordem_servico_id": 10
+    "data": "2025-01-15T09:00:00Z",
+    "ordem_servico_id": 10,
+    "created_at": "2025-01-15T09:00:00Z",
+    "updated_at": "2025-01-15T09:00:00Z"
   }
 ]
 ```
 
-Order #9 has a `valor_total` of R$ 1,110.00. The R$ 500.00 PIX payment represents a partial advance deposit; the remaining R$ 610.00 would be settled with an additional `Pagamento` record once the service is completed. Order #10, with a total of R$ 1,160.00, similarly shows a R$ 600.00 credit card deposit against its outstanding balance.
+Order #9 has a `valor_total` of R$ 1,110.00; the R$ 500.00 PIX deposit leaves R$ 610.00 outstanding. Order #10, with a total of R$ 1,160.00, shows a R$ 600.00 credit card deposit against its outstanding balance.
 
 ## Related Resources
 
 - [Service Orders](/api/ordens-servico) — the parent entity that payments are applied against
+- [Service Items](/api/itens-servico) — approved labour items that generate a billable total
+- [Part Items](/api/itens-peca) — approved parts items that contribute to the billable total

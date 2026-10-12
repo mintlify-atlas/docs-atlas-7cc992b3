@@ -1,58 +1,139 @@
 ---
-title: "DiagnosticoTecnico: initial vehicle inspection schema"
+title: "Diagnostico: vehicle intake inspection schema and rules"
 sidebarTitle: "Diagnostics"
-description: "Schema and field reference for DiagnosticoTecnico — the initial technical inspection record linked 1:1 to each service order in the Oficina Mecânica API."
+description: "Field reference and business rules for Diagnostico — captures mileage, fuel level, bodywork damage, and mechanic analysis per order."
 ---
 
-Each service order has exactly one technical diagnostic (`DiagnosticoTecnico`) representing the mechanic's initial inspection of the vehicle before any work begins. This is a strict 1:1 relationship enforced at the database level via a unique foreign key constraint — no service order can have more than one diagnostic record, and no diagnostic can exist without a linked service order.
+Each service order has exactly one diagnostic (`Diagnostico`) representing the mechanic's initial inspection of the vehicle before any work begins. This is a strict 1:1 relationship enforced at the database level via a unique foreign key constraint on `ordem_servico_id` — no service order can have more than one diagnostic, and no diagnostic can exist without a linked service order.
 
-## Fields
+Diagnostics are managed as a sub-resource of service orders. There is no standalone route file for this resource; create, read, update, and delete operations are performed through the `/ordens-servico` endpoint family.
+
+## Schema
+
+### Request fields (create / update)
+
+<ParamField body="analise_mecanico" type="string" required>
+  The mechanic's written analysis of the vehicle's condition at intake. Must be between **3 and 150 characters**.
+</ParamField>
+
+<ParamField body="quilometragem" type="integer">
+  Odometer reading at intake, in kilometres. Must be **≥ 0**. Defaults to `0`.
+</ParamField>
+
+<ParamField body="avarias_latarias" type="string" required>
+  Description of any existing bodywork damage observed at intake. Must be between **3 and 150 characters**. Documents pre-existing damage to protect both the workshop and the client.
+</ParamField>
+
+<ParamField body="nivel_combustivel" type="NivelCombustivel">
+  Fuel level observed at intake. Defaults to `medio`. Accepted values:
+
+  | Value   | Meaning           |
+  |---------|-------------------|
+  | `alto`  | High fuel level   |
+  | `medio` | Medium fuel level |
+  | `baixo` | Low fuel level    |
+</ParamField>
+
+<ParamField body="aprovado_cliente" type="boolean">
+  Whether the client formally approved this diagnostic report. Defaults to `true`. When `false`, the mechanic's assessment has been filed but the client has not yet validated it.
+</ParamField>
+
+<ParamField body="ordem_servico_id" type="integer" required>
+  Foreign key referencing the associated `OrdemServico`. Carries a **unique constraint** that enforces the 1:1 relationship.
+</ParamField>
+
+### Response fields
 
 <ResponseField name="id" type="integer">
   Auto-generated primary key. Assigned by the database on creation.
 </ResponseField>
 
-<ResponseField name="analise_mecanico" type="string" required>
-  The mechanic's written analysis of the vehicle's condition at the time of intake. Must be between **3 and 150 characters**. This field captures the professional assessment that justifies the proposed work.
+<ResponseField name="analise_mecanico" type="string">
+  The mechanic's written analysis of the vehicle's condition at intake.
 </ResponseField>
 
-<ResponseField name="quilometragem" type="integer" required>
-  The vehicle's odometer reading at intake, in kilometres. Must be **≥ 0**. Defaults to `0` if not provided. Used to track service intervals and validate future scheduled maintenance.
+<ResponseField name="quilometragem" type="integer">
+  Odometer reading at intake, in kilometres.
 </ResponseField>
 
-<ResponseField name="avarias_latarias" type="string" required>
-  A description of any existing bodywork damage observed during the intake inspection. Must be between **3 and 150 characters**. This protects both the workshop and the client by documenting pre-existing damage before the vehicle enters the workshop.
+<ResponseField name="avarias_latarias" type="string">
+  Description of any existing bodywork damage noted at intake.
 </ResponseField>
 
-<ResponseField name="nivel_combustivel" type="NivelCombustivel enum">
-  The fuel level observed at intake. Defaults to `medio`. Accepted values:
-
-  | Value    | Meaning           |
-  |----------|-------------------|
-  | `alto`   | High fuel level   |
-  | `medio`  | Medium fuel level |
-  | `baixo`  | Low fuel level    |
+<ResponseField name="nivel_combustivel" type="string">
+  Fuel level at intake. One of `alto`, `medio`, or `baixo`.
 </ResponseField>
 
 <ResponseField name="aprovado_cliente" type="boolean">
-  Indicates whether the client formally approved this diagnostic report. Defaults to `true`. When `false`, the diagnostic has been filed but the client has not yet validated the mechanic's assessment.
+  Whether the client approved the diagnostic report.
 </ResponseField>
 
-<ResponseField name="ordem_servico_id" type="integer" required>
-  Foreign key referencing the associated `OrdemServico`. This column has a **unique constraint**, enforcing the 1:1 relationship. Each service order can be linked to at most one diagnostic.
+<ResponseField name="ordem_servico_id" type="integer">
+  Foreign key referencing the associated `OrdemServico`.
 </ResponseField>
 
 <ResponseField name="created_at" type="datetime">
-  ISO 8601 timestamp of when the record was created. Set automatically by the server in UTC.
+  ISO 8601 UTC timestamp of when the record was created.
 </ResponseField>
 
 <ResponseField name="updated_at" type="datetime">
-  ISO 8601 timestamp of the last update. Refreshed automatically on every write operation in UTC.
+  ISO 8601 UTC timestamp of the last update.
 </ResponseField>
 
-## Example
+### Update fields (all optional)
 
-The following record corresponds to the first seed service order — a routine preventive oil change on a 2022 Chevrolet Onix:
+A `PATCH` request may include any subset of the following fields. Omitted fields are left unchanged.
+
+<ParamField body="analise_mecanico" type="string">
+  Updated mechanic analysis. Must be between 3 and 150 characters.
+</ParamField>
+
+<ParamField body="quilometragem" type="integer">
+  Corrected odometer reading. Must be ≥ 0.
+</ParamField>
+
+<ParamField body="avarias_latarias" type="string">
+  Updated bodywork damage description. Must be between 3 and 150 characters.
+</ParamField>
+
+<ParamField body="nivel_combustivel" type="NivelCombustivel">
+  Updated fuel level. One of `alto`, `medio`, `baixo`.
+</ParamField>
+
+<ParamField body="aprovado_cliente" type="boolean">
+  Updated client approval flag.
+</ParamField>
+
+<ParamField body="ordem_servico_id" type="integer">
+  Reassigns the diagnostic to a different service order. The target order must not already have a diagnostic.
+</ParamField>
+
+## Error Codes
+
+| Status | Exception                  | When it occurs                                                   |
+|--------|----------------------------|------------------------------------------------------------------|
+| 404    | `RecursoNaoEncontradoException` | The diagnostic ID or the referenced `ordem_servico_id` does not exist. |
+| 409    | `CampoDuplicadoException`  | The target service order already has a diagnostic (unique constraint violation). |
+| 409    | `ViolacaoChaveEstrangeiraException` | The supplied `ordem_servico_id` references a non-existent service order. |
+
+## Examples
+
+### Create request
+
+The following JSON body creates the first seed diagnostic — a routine preventive oil change on a 2022 Chevrolet Onix, odometer at 35,200 km, no bodywork damage, high fuel level, client approved:
+
+```json
+{
+  "analise_mecanico": "Troca de óleo dentro do prazo preventivo.",
+  "quilometragem": 35200,
+  "avarias_latarias": "Sem avarias visíveis.",
+  "nivel_combustivel": "alto",
+  "aprovado_cliente": true,
+  "ordem_servico_id": 1
+}
+```
+
+### Create response
 
 ```json
 {
@@ -68,7 +149,9 @@ The following record corresponds to the first seed service order — a routine p
 }
 ```
 
-Here is a more detailed diagnostic from a complex injection fault service order:
+### Complex diagnostic example
+
+The following record is from order #3, an electronic injection fault. The fuel tank was nearly empty, the client approved the report, and the front bumper showed minor scuff damage:
 
 ```json
 {
@@ -88,7 +171,7 @@ Here is a more detailed diagnostic from a complex injection fault service order:
 
 ### One diagnostic per service order
 
-The `ordem_servico_id` field carries a **unique database constraint**. Attempting to create a second `DiagnosticoTecnico` for a service order that already has one will return:
+The `ordem_servico_id` column has a **unique database constraint**. Attempting to create a second `Diagnostico` for a service order that already has one returns HTTP 409:
 
 ```json
 {
@@ -97,10 +180,14 @@ The `ordem_servico_id` field carries a **unique database constraint**. Attemptin
 }
 ```
 
-This maps to `CampoDuplicadoException` in the application exception hierarchy.
-
 ### Diagnostic approval vs. item approval
 
 <Note>
-  `aprovado_cliente` on a `DiagnosticoTecnico` record is a separate flag from the `aprovado` field on `ItemServico` and `ItemPeca` records. A client can approve the overall diagnostic assessment (`aprovado_cliente = true`) while still declining individual service or parts line items (`aprovado = false` on those records). The diagnostic approval reflects agreement with the mechanic's initial findings; item-level approval controls what actually gets billed.
+  `aprovado_cliente` on a `Diagnostico` record is distinct from the `aprovado` field on `ItemServico` and `ItemPeca` records. A client can approve the overall diagnostic (`aprovado_cliente = true`) while still declining individual service or parts line items. Diagnostic approval reflects agreement with the mechanic's initial findings; item-level approval controls what gets billed.
 </Note>
+
+## Related Resources
+
+- [Service Orders](/api/ordens-servico) — the parent entity that each diagnostic is linked to
+- [Service Items](/api/itens-servico) — labour line items associated with the same service order
+- [Part Items](/api/itens-peca) — parts line items associated with the same service order
